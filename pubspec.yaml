@@ -1,0 +1,60 @@
+name: workshop_mechanic
+description: Hagbes Workshop Mechanic App - Odoo Integration
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+
+  # Networking
+  dio: ^5.4.3
+  pretty_dio_logger: ^1.3.1
+
+  # State Management
+  flutter_bloc: ^8.1.5
+  equatable: ^2.0.5
+
+  # Dependency Injection
+  get_it: ^7.6.7
+
+  # Local Storage & Offline Support
+  shared_preferences: ^2.2.3
+  flutter_secure_storage: ^9.2.2
+  sqflite: ^2.3.0
+  path_provider: ^2.1.2
+  path: ^1.9.0
+  connectivity_plus: ^6.0.3
+  geolocator: ^13.0.1
+
+  # UI
+  google_fonts: ^6.2.1
+  flutter_svg: ^2.0.10+1
+  cached_network_image: ^3.3.1
+  shimmer: ^3.0.0
+  lottie: ^3.1.0
+  intl: ^0.20.2
+  timeago: ^3.6.1
+
+  # Utils
+  uuid: ^4.4.0
+  logger: ^2.4.0
+  hive_ce_flutter: ^2.3.4
+  internet_connection_checker_plus: ^3.1.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+  build_runner: ^2.4.9
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/
+    - assets/animations/
