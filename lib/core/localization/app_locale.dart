@@ -162,6 +162,8 @@ abstract final class AppStrings {
       'syncAction': 'this action',
       'syncTimedOut':
           'Sync is taking longer than expected. The app will keep retrying automatically and your pending changes remain saved.',
+      'refreshTasks': 'Refresh tasks',
+      'refreshUnavailableOffline': 'Refresh is unavailable while offline',
     },
     'am': {
       'workshop': 'ወርክሾፕ',
@@ -260,6 +262,8 @@ abstract final class AppStrings {
       'syncAction': 'ይህ ድርጊት',
       'syncTimedOut':
           'ማመሳሰል ከተጠበቀው በላይ ጊዜ ወስዷል። መተግበሪያው በራሱ ይሞክራል፤ ለውጦችዎም ተቀምጠዋል።',
+      'refreshTasks': 'ተግባራትን አድስ',
+      'refreshUnavailableOffline': 'ከመስመር ውጭ ማደስ አይቻልም',
     },
     'om': {
       'workshop': 'Warshaa Suphaa',
@@ -363,6 +367,9 @@ abstract final class AppStrings {
       'syncAction': 'hojii kana',
       'syncTimedOut':
           'Walsimsiisuun yeroo dheeraa fudhateera. Appichi ofumaan irra deebi’ee yaala; jijjiiramni kee kuufameera.',
+      'refreshTasks': 'Hojiiwwan haaromsi',
+      'refreshUnavailableOffline':
+          'Toora ala yeroo ta’u haaromsuun hin danda’amu',
     },
   };
 }

@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../../../core/di/service_locator.dart';
 import '../../../core/localization/app_locale.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/sync/sync_manager.dart';
 import '../data/task_repository.dart';
 
 class MyRequestsPage extends StatefulWidget {
@@ -16,11 +19,22 @@ class _MyRequestsPageState extends State<MyRequestsPage> {
   List<Map<String, dynamic>> _outsourceRequests = [];
   bool _isLoading = true;
   String? _error;
+  bool _isOnline = SyncManager().isOnline;
+  StreamSubscription<bool>? _connectionSubscription;
 
   @override
   void initState() {
     super.initState();
+    _connectionSubscription = SyncManager().connectionChanges.listen((online) {
+      if (mounted) setState(() => _isOnline = online);
+    });
     _loadRequests();
+  }
+
+  @override
+  void dispose() {
+    _connectionSubscription?.cancel();
+    super.dispose();
   }
 
   Future<void> _loadRequests() async {
@@ -73,7 +87,7 @@ class _MyRequestsPageState extends State<MyRequestsPage> {
           actions: [
             IconButton(
               tooltip: context.tr('refreshRequests'),
-              onPressed: _isLoading ? null : _loadRequests,
+              onPressed: _isLoading || !_isOnline ? null : _loadRequests,
               icon: const Icon(Icons.refresh_rounded),
             ),
             const SizedBox(width: 8),
@@ -130,11 +144,13 @@ class _MyRequestsPageState extends State<MyRequestsPage> {
                           requests: _mrcvRequests,
                           type: _RequestType.material,
                           onRefresh: _loadRequests,
+                          isOnline: _isOnline,
                         ),
                         _RequestList(
                           requests: _outsourceRequests,
                           type: _RequestType.outsource,
                           onRefresh: _loadRequests,
+                          isOnline: _isOnline,
                         ),
                       ],
                     ),
@@ -246,45 +262,47 @@ class _RequestList extends StatelessWidget {
   final List<Map<String, dynamic>> requests;
   final _RequestType type;
   final Future<void> Function() onRefresh;
+  final bool isOnline;
   const _RequestList({
     required this.requests,
     required this.type,
     required this.onRefresh,
+    required this.isOnline,
   });
 
   @override
   Widget build(BuildContext context) {
     if (requests.isEmpty) {
-      return RefreshIndicator(
-        onRefresh: onRefresh,
-        child: ListView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          children: [
-            SizedBox(
-              height: MediaQuery.sizeOf(context).height * .43,
-              child: _EmptyState(type: type),
-            ),
-          ],
-        ),
+      final list = ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        children: [
+          SizedBox(
+            height: MediaQuery.sizeOf(context).height * .43,
+            child: _EmptyState(type: type),
+          ),
+        ],
       );
+      return isOnline
+          ? RefreshIndicator(onRefresh: onRefresh, child: list)
+          : list;
     }
 
-    return RefreshIndicator(
-      onRefresh: onRefresh,
-      child: ListView.separated(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: EdgeInsets.fromLTRB(
-          16,
-          4,
-          16,
-          28 + MediaQuery.paddingOf(context).bottom,
-        ),
-        itemCount: requests.length,
-        separatorBuilder: (context, index) => const SizedBox(height: 10),
-        itemBuilder: (context, index) =>
-            _RequestCard(request: requests[index], type: type),
+    final list = ListView.separated(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: EdgeInsets.fromLTRB(
+        16,
+        4,
+        16,
+        28 + MediaQuery.paddingOf(context).bottom,
       ),
+      itemCount: requests.length,
+      separatorBuilder: (context, index) => const SizedBox(height: 10),
+      itemBuilder: (context, index) =>
+          _RequestCard(request: requests[index], type: type),
     );
+    return isOnline
+        ? RefreshIndicator(onRefresh: onRefresh, child: list)
+        : list;
   }
 }
 
