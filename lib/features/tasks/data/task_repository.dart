@@ -399,6 +399,9 @@ class TaskRepository {
         await _taskCache.saveDutyStatus(_client.session!.uid, true);
         return true;
       } catch (e) {
+        // Account/configuration errors must not be queued as offline work.
+        // They will never succeed until an administrator fixes the Odoo user.
+        if (_isPermanentDutyError(e)) rethrow;
         // Fallback to queue if RPC fails due to connectivity
         await _dbHelper.queueAction(
           'check_in',
@@ -432,6 +435,7 @@ class TaskRepository {
         await _taskCache.saveDutyStatus(_client.session!.uid, false);
         return true;
       } catch (e) {
+        if (_isPermanentDutyError(e)) rethrow;
         await _dbHelper.queueAction(
           'check_out',
           0,
@@ -449,6 +453,15 @@ class TaskRepository {
       await _taskCache.saveDutyStatus(_client.session!.uid, false);
       return false;
     }
+  }
+
+  bool _isPermanentDutyError(Object error) {
+    final message = error.toString().toLowerCase();
+    return message.contains('no technical record') ||
+        message.contains('no technician record') ||
+        message.contains('not allowed') ||
+        message.contains('accesserror') ||
+        message.contains('permission denied');
   }
 
   /// Fetch duty status for logged in mechanic
