@@ -2,8 +2,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../domain/models/workshop_task.dart';
-import '../data/task_repository.dart';
-import '../../../core/di/service_locator.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/localization/app_locale.dart';
 
@@ -55,26 +53,8 @@ class _LiveStatusBannerState extends State<LiveStatusBanner> {
           setState(() => _elapsed += const Duration(seconds: 1));
         }
       });
-    } else {
-      // Idle / Off-time mode: count up from total accumulated idle time today
-      try {
-        final repo = sl<TaskRepository>();
-        final perf = await repo.getMechanicPerformance();
-        final idleHours = (perf['idle_hours'] as num?)?.toDouble() ?? 0.0;
-        final initialIdleSeconds = (idleHours * 3600).round();
-
-        if (mounted) {
-          setState(() {
-            _elapsed = Duration(seconds: initialIdleSeconds);
-          });
-        }
-      } catch (_) {}
-
-      _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
-        if (mounted) {
-          setState(() => _elapsed += const Duration(seconds: 1));
-        }
-      });
+    } else if (mounted) {
+      setState(() => _elapsed = Duration.zero);
     }
   }
 
@@ -93,17 +73,18 @@ class _LiveStatusBannerState extends State<LiveStatusBanner> {
 
   @override
   Widget build(BuildContext context) {
-    final isWorking = _activeTask != null;
-    final themeColor = isWorking ? AppColors.success : AppColors.warning;
-    final title =
-        isWorking ? _activeTask!.description : context.tr('waitingTask');
+    final activeTask = _activeTask;
+    if (activeTask == null) return const SizedBox.shrink();
+
+    final themeColor = context.appColors.success;
+    final title = activeTask.description;
 
     return Container(
-      margin: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      margin: const EdgeInsets.fromLTRB(16, 7, 16, 2),
+      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
       decoration: BoxDecoration(
         color: themeColor.withValues(alpha: .08),
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(15),
         border: Border.all(color: themeColor.withValues(alpha: .24)),
       ),
       child: Row(
@@ -124,7 +105,7 @@ class _LiveStatusBannerState extends State<LiveStatusBanner> {
               ],
             ),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 10),
 
           // Status & Title
           Expanded(
@@ -132,9 +113,7 @@ class _LiveStatusBannerState extends State<LiveStatusBanner> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  isWorking
-                      ? context.tr('activeTask')
-                      : context.tr('available'),
+                  context.tr('activeTask'),
                   style: GoogleFonts.inter(
                     fontSize: 10,
                     fontWeight: FontWeight.bold,
@@ -148,7 +127,7 @@ class _LiveStatusBannerState extends State<LiveStatusBanner> {
                   style: GoogleFonts.inter(
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
-                    color: AppColors.text,
+                    color: context.appColors.text,
                   ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -160,18 +139,18 @@ class _LiveStatusBannerState extends State<LiveStatusBanner> {
 
           // Live Ticker Display
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
             decoration: BoxDecoration(
-              color: AppColors.background.withValues(alpha: .65),
+              color: context.appColors.background.withValues(alpha: .65),
               borderRadius: BorderRadius.circular(10),
             ),
             child: Text(
               _formatDuration(_elapsed),
               style: GoogleFonts.inter(
-                fontSize: 15,
+                fontSize: 14,
                 fontWeight: FontWeight.bold,
                 color: themeColor,
-                fontFeatures: const [FontFeature.tabularFigures()],
+                fontFeatures: [const FontFeature.tabularFigures()],
               ),
             ),
           ),

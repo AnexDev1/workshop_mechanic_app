@@ -1,14 +1,17 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
-import '../domain/models/workshop_task.dart';
-import '../data/task_repository.dart';
 import '../../../core/di/service_locator.dart';
-import '../../../core/theme/app_theme.dart';
 import '../../../core/localization/app_locale.dart';
+import '../../../core/theme/app_theme.dart';
+import '../data/task_repository.dart';
+import '../domain/models/workshop_task.dart';
+
+typedef _MaterialLine = ({
+  Map<String, dynamic> product,
+  double quantity,
+});
 
 class MrcvDialog extends StatefulWidget {
   final WorkshopTask task;
-
   const MrcvDialog({super.key, required this.task});
 
   @override
@@ -16,16 +19,16 @@ class MrcvDialog extends StatefulWidget {
 }
 
 class _MrcvDialogState extends State<MrcvDialog> {
-  final _formKey = GlobalKey<FormState>();
-  final _qtyController = TextEditingController(text: '1');
+  final _quantityController = TextEditingController(text: '1');
   final _reasonController = TextEditingController();
+  TextEditingController? _autocompleteController;
 
-  bool _isLoadingContext = true;
-  bool _isSubmitting = false;
-
+  bool _loadingContext = true;
+  bool _submitting = false;
   List<Map<String, dynamic>> _warehouses = [];
-  Map<String, dynamic>? _selectedWarehouse;
+  Map<String, dynamic>? _warehouse;
   Map<String, dynamic>? _selectedProduct;
+  final List<_MaterialLine> _items = [];
 
   @override
   void initState() {
@@ -33,391 +36,492 @@ class _MrcvDialogState extends State<MrcvDialog> {
     _loadContext();
   }
 
-  Future<void> _loadContext() async {
-    try {
-      final repo = sl<TaskRepository>();
-      final contextData = await repo.getMrcvContext(widget.task.jobId!);
-      if (mounted) {
-        setState(() {
-          _warehouses =
-              (contextData['warehouses'] as List).cast<Map<String, dynamic>>();
-          if (_warehouses.isNotEmpty) {
-            _selectedWarehouse = _warehouses.first;
-          }
-          _isLoadingContext = false;
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() => _isLoadingContext = false);
-      }
-    }
-  }
-
   @override
   void dispose() {
-    _qtyController.dispose();
+    _quantityController.dispose();
     _reasonController.dispose();
     super.dispose();
   }
 
-  Future<void> _submitMRCV() async {
-    if (!_formKey.currentState!.validate()) return;
-    if (_selectedWarehouse == null || _selectedProduct == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Please select a warehouse and a product',
-              style: GoogleFonts.inter(fontWeight: FontWeight.w500)),
-          backgroundColor: const Color(0xFFEF4444),
-        ),
-      );
+  Future<void> _loadContext() async {
+    try {
+      final data =
+          await sl<TaskRepository>().getMrcvContext(widget.task.jobId!);
+      if (!mounted) return;
+      setState(() {
+        _warehouses = (data['warehouses'] as List).cast<Map<String, dynamic>>();
+        _warehouse = _warehouses.firstOrNull;
+      });
+    } catch (_) {
+      // The empty state below gives the user a retry path.
+    } finally {
+      if (mounted) setState(() => _loadingContext = false);
+    }
+  }
+
+  bool _addSelectedItem() {
+    final product = _selectedProduct;
+    final quantity = double.tryParse(_quantityController.text.trim());
+    if (product == null || quantity == null || quantity <= 0) {
+      _showMessage(context.tr('selectProductAndQuantity'), isError: true);
+      return false;
+    }
+
+    final productId = product['id'];
+    final existingIndex =
+        _items.indexWhere((line) => line.product['id'] == productId);
+    setState(() {
+      if (existingIndex >= 0) {
+        final existing = _items[existingIndex];
+        _items[existingIndex] = (
+          product: existing.product,
+          quantity: existing.quantity + quantity,
+        );
+      } else {
+        _items.add((product: product, quantity: quantity));
+      }
+      _selectedProduct = null;
+      _quantityController.text = '1';
+      _autocompleteController?.clear();
+    });
+    FocusScope.of(context).unfocus();
+    return true;
+  }
+
+  Future<void> _submit() async {
+    if (_selectedProduct != null && !_addSelectedItem()) return;
+    if (_warehouse == null || _items.isEmpty) {
+      _showMessage(context.tr('addAtLeastOneProduct'), isError: true);
       return;
     }
 
-    setState(() => _isSubmitting = true);
-
+    setState(() => _submitting = true);
     try {
-      final repo = sl<TaskRepository>();
-      await repo.createMrcvRequest(
+      final repository = sl<TaskRepository>();
+      await repository.createMrcvRequestItems(
         jobId: widget.task.jobId!,
-        warehouseId: _selectedWarehouse!['id'] as int,
-        productId: _selectedProduct!['id'] as int,
-        quantity: double.tryParse(_qtyController.text.trim()) ?? 1.0,
+        warehouseId: _warehouse!['id'] as int,
+        items: _items
+            .map((line) => {
+                  'product_id': line.product['id'],
+                  'quantity': line.quantity,
+                })
+            .toList(),
         reason: _reasonController.text.trim(),
       );
-
+      if (!mounted) return;
+      Navigator.pop(context, true);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(
+            context.tr('materialItemsSubmitted', {'count': _items.length})),
+        backgroundColor: context.appColors.success,
+      ));
+    } catch (error) {
       if (mounted) {
-        Navigator.pop(context, true);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Material Request (MRCV) submitted successfully!',
-                style: GoogleFonts.inter(fontWeight: FontWeight.w600)),
-            backgroundColor: const Color(0xFF22C55E),
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() => _isSubmitting = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to submit MRCV: $e',
-                style: GoogleFonts.inter(fontWeight: FontWeight.w500)),
-            backgroundColor: const Color(0xFFEF4444),
-          ),
-        );
+        setState(() => _submitting = false);
+        _showMessage(_materialSubmitError(error), isError: true);
       }
     }
+  }
+
+  String _materialSubmitError(Object error) {
+    final raw = error.toString().replaceFirst(RegExp(r'^Exception:\s*'), '');
+    final normalized = raw.toLowerCase();
+
+    if (normalized.contains('action_create_from_mobile') &&
+        (normalized.contains('positional argument') ||
+            normalized.contains('unexpected keyword') ||
+            normalized.contains('takes '))) {
+      return context.tr('materialServerUpdateRequired');
+    }
+    if (normalized.contains('no approval flow')) {
+      return context.tr('materialApprovalFlowMissing');
+    }
+    if (normalized.contains('no steps defined')) {
+      return context.tr('materialApprovalStepsMissing');
+    }
+    if (normalized.contains('access') ||
+        normalized.contains('not allowed') ||
+        normalized.contains('permission')) {
+      return context.tr('materialPermissionDenied');
+    }
+    if (normalized.contains('socketexception') ||
+        normalized.contains('connection refused') ||
+        normalized.contains('connection error') ||
+        normalized.contains('timed out') ||
+        normalized.contains('network is unreachable')) {
+      return context.tr('materialConnectionFailed');
+    }
+
+    // Odoo's RPC message is normally concise and useful. Avoid exposing a
+    // traceback or an excessively long internal server response in the UI.
+    final firstLine = raw.split('\n').first.trim();
+    if (firstLine.isNotEmpty &&
+        !normalized.contains('traceback') &&
+        firstLine.length <= 180) {
+      return firstLine;
+    }
+    return context.tr('materialSubmitFailed');
+  }
+
+  void _showMessage(String message, {bool isError = false}) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(message),
+      backgroundColor:
+          isError ? context.appColors.danger : context.appColors.surfaceHigh,
+    ));
   }
 
   @override
   Widget build(BuildContext context) {
     return Dialog(
-      backgroundColor: AppColors.surface,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+      backgroundColor: context.appColors.surface,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Header
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: AppColors.warning.withValues(alpha: .12),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Icon(Icons.inventory_2_rounded,
-                        color: AppColors.warning, size: 24),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          context.tr('requestMaterial'),
-                          style: GoogleFonts.inter(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w800,
-                            color: AppColors.text,
-                          ),
-                        ),
-                        Text(
-                          widget.task.jobName ?? widget.task.description,
-                          style: GoogleFonts.inter(
-                            fontSize: 12,
-                            color: AppColors.textMuted,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
-
-              // Warehouse Dropdown
-              Text(
-                'Warehouse',
-                style: GoogleFonts.inter(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textMuted),
-              ),
-              const SizedBox(height: 6),
-              if (_isLoadingContext)
-                const Center(child: CircularProgressIndicator(strokeWidth: 2))
-              else if (_warehouses.isEmpty)
-                Text('No warehouses found',
-                    style: GoogleFonts.inter(color: AppColors.danger))
-              else
-                DropdownButtonFormField<Map<String, dynamic>>(
-                  initialValue: _selectedWarehouse,
-                  dropdownColor: AppColors.surfaceHigh,
-                  style: GoogleFonts.inter(color: AppColors.text, fontSize: 14),
-                  decoration: InputDecoration(
-                    filled: true,
-                    fillColor: AppColors.surfaceHigh,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(color: AppColors.border),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(color: AppColors.border),
-                    ),
-                  ),
-                  items: _warehouses.map((w) {
-                    return DropdownMenuItem<Map<String, dynamic>>(
-                      value: w,
-                      child: Text(w['name'] as String),
-                    );
-                  }).toList(),
-                  onChanged: (val) {
-                    setState(() {
-                      _selectedWarehouse = val;
-                      _selectedProduct = null; // reset product
-                    });
-                  },
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: 520,
+          maxHeight: MediaQuery.sizeOf(context).height * .86,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _buildHeader(),
+            const Divider(height: 1),
+            Flexible(
+              child: SingleChildScrollView(
+                keyboardDismissBehavior:
+                    ScrollViewKeyboardDismissBehavior.onDrag,
+                padding: EdgeInsets.fromLTRB(
+                  20,
+                  18,
+                  20,
+                  20 + MediaQuery.viewInsetsOf(context).bottom * .08,
                 ),
-              const SizedBox(height: 14),
-
-              // Product Autocomplete
-              Text(
-                'Product',
-                style: GoogleFonts.inter(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: const Color(0xFFCBD5E1)),
+                child: _buildForm(),
               ),
-              const SizedBox(height: 6),
-              Autocomplete<Map<String, dynamic>>(
-                displayStringForOption: (option) => option['name'] as String,
-                optionsBuilder: (TextEditingValue textEditingValue) async {
-                  if (textEditingValue.text == '' ||
-                      _selectedWarehouse == null) {
-                    return const Iterable<Map<String, dynamic>>.empty();
-                  }
-                  final repo = sl<TaskRepository>();
-                  return await repo.searchWarehouseProducts(
-                    _selectedWarehouse!['lot_stock_id'] as int,
-                    textEditingValue.text,
-                  );
-                },
-                onSelected: (Map<String, dynamic> selection) {
-                  setState(() {
-                    _selectedProduct = selection;
-                  });
-                },
-                fieldViewBuilder:
-                    (context, controller, focusNode, onFieldSubmitted) {
-                  return TextFormField(
-                    controller: controller,
-                    focusNode: focusNode,
-                    style: GoogleFonts.inter(color: Colors.white, fontSize: 14),
-                    decoration: InputDecoration(
-                      hintText: 'Search products...',
-                      hintStyle: GoogleFonts.inter(
-                          color: const Color(0xFF64748B), fontSize: 13),
-                      filled: true,
-                      fillColor: AppColors.surfaceHigh,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(color: Color(0xFF334155)),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(color: Color(0xFF334155)),
-                      ),
-                    ),
-                    validator: (val) => _selectedProduct == null
-                        ? 'Please select a product'
-                        : null,
-                  );
-                },
-                optionsViewBuilder: (context, onSelected, options) {
-                  return Align(
-                    alignment: Alignment.topLeft,
-                    child: Material(
-                      elevation: 4.0,
-                      color: AppColors.surfaceHigh,
-                      borderRadius: BorderRadius.circular(12),
-                      child: ConstrainedBox(
-                        constraints:
-                            const BoxConstraints(maxHeight: 200, maxWidth: 300),
-                        child: ListView.builder(
-                          padding: EdgeInsets.zero,
-                          shrinkWrap: true,
-                          itemCount: options.length,
-                          itemBuilder: (BuildContext context, int index) {
-                            final option = options.elementAt(index);
-                            return ListTile(
-                              title: Text(option['name'] as String,
-                                  style: GoogleFonts.inter(
-                                      color: Colors.white, fontSize: 14)),
-                              subtitle: Text('Qty: ${option['quantity']}',
-                                  style: GoogleFonts.inter(
-                                      color: const Color(0xFF94A3B8),
-                                      fontSize: 12)),
-                              onTap: () {
-                                onSelected(option);
-                              },
-                            );
-                          },
-                        ),
-                      ),
-                    ),
-                  );
-                },
-              ),
-              const SizedBox(height: 14),
-
-              // Quantity
-              Text(
-                'Requested Quantity',
-                style: GoogleFonts.inter(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: const Color(0xFFCBD5E1)),
-              ),
-              const SizedBox(height: 6),
-              TextFormField(
-                controller: _qtyController,
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
-                style: GoogleFonts.inter(color: Colors.white, fontSize: 14),
-                decoration: InputDecoration(
-                  hintText: '1.0',
-                  hintStyle: GoogleFonts.inter(
-                      color: const Color(0xFF64748B), fontSize: 13),
-                  filled: true,
-                  fillColor: AppColors.surfaceHigh,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: Color(0xFF334155)),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: Color(0xFF334155)),
-                  ),
-                ),
-                validator: (val) {
-                  if (val == null || val.trim().isEmpty) {
-                    return 'Enter quantity';
-                  }
-                  if (double.tryParse(val.trim()) == null) {
-                    return 'Enter valid number';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 14),
-
-              // Reason / Notes
-              Text(
-                'Notes / Reason (Optional)',
-                style: GoogleFonts.inter(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: const Color(0xFFCBD5E1)),
-              ),
-              const SizedBox(height: 6),
-              TextFormField(
-                controller: _reasonController,
-                maxLines: 2,
-                style: GoogleFonts.inter(color: Colors.white, fontSize: 13),
-                decoration: InputDecoration(
-                  hintText: 'e.g. Replacement needed for maintenance',
-                  hintStyle: GoogleFonts.inter(
-                      color: const Color(0xFF64748B), fontSize: 13),
-                  filled: true,
-                  fillColor: AppColors.surfaceHigh,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: Color(0xFF334155)),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: Color(0xFF334155)),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 20),
-
-              // Action Buttons
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  TextButton(
-                    onPressed:
-                        _isSubmitting ? null : () => Navigator.pop(context),
-                    child: Text(
-                      context.tr('cancel'),
-                      style: GoogleFonts.inter(color: const Color(0xFF94A3B8)),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  ElevatedButton(
-                    onPressed: _isSubmitting ? null : _submitMRCV,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFF59E0B),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 18, vertical: 12),
-                    ),
-                    child: _isSubmitting
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
-                        : Text(
-                            'Submit MRCV',
-                            style: GoogleFonts.inter(
-                              fontWeight: FontWeight.bold,
-                              color: AppColors.background,
-                            ),
-                          ),
-                  ),
-                ],
-              ),
-            ],
-          ),
+            ),
+            const Divider(height: 1),
+            _buildActions(),
+          ],
         ),
       ),
     );
   }
+
+  Widget _buildHeader() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 18, 12, 16),
+      child: Row(
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: context.appColors.warning.withValues(alpha: .12),
+              borderRadius: BorderRadius.circular(13),
+            ),
+            child: Icon(Icons.inventory_2_outlined,
+                color: context.appColors.warning, size: 21),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  context.tr('requestMaterial'),
+                  style: const TextStyle(
+                      fontSize: 17, fontWeight: FontWeight.w800),
+                ),
+                Text(
+                  widget.task.jobName ?? widget.task.description,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      color: context.appColors.textMuted, fontSize: 11),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            onPressed: _submitting ? null : () => Navigator.pop(context),
+            icon: Icon(Icons.close_rounded, color: context.appColors.textMuted),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildForm() {
+    if (_loadingContext) {
+      return const SizedBox(
+        height: 220,
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
+    if (_warehouses.isEmpty) {
+      return SizedBox(
+        height: 220,
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.warehouse_outlined,
+                  size: 42, color: context.appColors.textSubtle),
+              const SizedBox(height: 12),
+              Text(context.tr('noWarehouses')),
+              TextButton(
+                  onPressed: _loadContext, child: Text(context.tr('retry'))),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _FieldLabel(context.tr('warehouse')),
+        const SizedBox(height: 7),
+        DropdownButtonFormField<Map<String, dynamic>>(
+          initialValue: _warehouse,
+          isExpanded: true,
+          dropdownColor: context.appColors.surfaceHigh,
+          decoration:
+              const InputDecoration(prefixIcon: Icon(Icons.warehouse_outlined)),
+          items: _warehouses
+              .map((warehouse) => DropdownMenuItem(
+                    value: warehouse,
+                    child: Text(
+                      warehouse['name'] as String,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ))
+              .toList(),
+          onChanged: _submitting
+              ? null
+              : (value) {
+                  setState(() {
+                    _warehouse = value;
+                    _selectedProduct = null;
+                    _items.clear();
+                    _autocompleteController?.clear();
+                  });
+                },
+        ),
+        const SizedBox(height: 16),
+        _FieldLabel(context.tr('product')),
+        const SizedBox(height: 7),
+        Autocomplete<Map<String, dynamic>>(
+          displayStringForOption: (option) => option['name'] as String,
+          optionsBuilder: (value) async {
+            if (value.text.trim().isEmpty || _warehouse == null) {
+              return const Iterable<Map<String, dynamic>>.empty();
+            }
+            return sl<TaskRepository>().searchWarehouseProducts(
+              _warehouse!['lot_stock_id'] as int,
+              value.text.trim(),
+            );
+          },
+          onSelected: (selection) =>
+              setState(() => _selectedProduct = selection),
+          fieldViewBuilder: (context, controller, focusNode, onSubmit) {
+            _autocompleteController = controller;
+            return TextFormField(
+              controller: controller,
+              focusNode: focusNode,
+              textInputAction: TextInputAction.search,
+              decoration: InputDecoration(
+                hintText: context.tr('searchProducts'),
+                prefixIcon: const Icon(Icons.search_rounded),
+              ),
+            );
+          },
+          optionsViewBuilder: (context, onSelected, options) {
+            return Align(
+              alignment: Alignment.topLeft,
+              child: Material(
+                color: context.appColors.surfaceHigh,
+                borderRadius: BorderRadius.circular(14),
+                elevation: 8,
+                child: ConstrainedBox(
+                  constraints:
+                      const BoxConstraints(maxHeight: 220, maxWidth: 360),
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    itemCount: options.length,
+                    itemBuilder: (context, index) {
+                      final product = options.elementAt(index);
+                      return ListTile(
+                        dense: true,
+                        title: Text(product['name'] as String),
+                        subtitle: Text(context.tr('availableQuantity',
+                            {'quantity': product['quantity']})),
+                        onTap: () => onSelected(product),
+                      );
+                    },
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+        const SizedBox(height: 12),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _FieldLabel(context.tr('quantity')),
+                  const SizedBox(height: 7),
+                  TextField(
+                    controller: _quantityController,
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(
+                      hintText: '1.0',
+                      prefixIcon: Icon(Icons.numbers_rounded),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 10),
+            ElevatedButton.icon(
+              onPressed: _submitting ? null : _addSelectedItem,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: context.appColors.warning,
+                foregroundColor: context.appColors.background,
+              ),
+              icon: const Icon(Icons.add_rounded),
+              label: Text(context.tr('addItem')),
+            ),
+          ],
+        ),
+        if (_items.isNotEmpty) ...[
+          const SizedBox(height: 18),
+          Row(
+            children: [
+              _FieldLabel(context.tr('selectedItems')),
+              const Spacer(),
+              Text(
+                context.tr('itemCount', {'count': _items.length}),
+                style:
+                    TextStyle(color: context.appColors.textMuted, fontSize: 11),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          ..._items.asMap().entries.map((entry) {
+            final line = entry.value;
+            return Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.fromLTRB(12, 8, 6, 8),
+              decoration: BoxDecoration(
+                color: context.appColors.surfaceHigh,
+                borderRadius: BorderRadius.circular(13),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.inventory_2_outlined,
+                      size: 17, color: context.appColors.warning),
+                  const SizedBox(width: 9),
+                  Expanded(
+                    child: Text(
+                      line.product['name'] as String,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          fontSize: 12, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    '× ${line.quantity.toStringAsFixed(2)}',
+                    style: TextStyle(
+                        color: context.appColors.textMuted,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700),
+                  ),
+                  IconButton(
+                    tooltip: context.tr('removeItem'),
+                    onPressed: _submitting
+                        ? null
+                        : () => setState(() => _items.removeAt(entry.key)),
+                    icon: Icon(Icons.close_rounded,
+                        size: 18, color: context.appColors.danger),
+                  ),
+                ],
+              ),
+            );
+          }),
+        ],
+        const SizedBox(height: 14),
+        _FieldLabel(context.tr('notesOptional')),
+        const SizedBox(height: 7),
+        TextField(
+          controller: _reasonController,
+          maxLines: 2,
+          decoration:
+              InputDecoration(hintText: context.tr('materialNotesHint')),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildActions() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
+      child: Row(
+        children: [
+          Expanded(
+            child: TextButton(
+              onPressed: _submitting ? null : () => Navigator.pop(context),
+              child: Text(context.tr('cancel')),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            flex: 2,
+            child: ElevatedButton.icon(
+              onPressed: _submitting ? null : _submit,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: context.appColors.warning,
+                foregroundColor: context.appColors.background,
+              ),
+              icon: _submitting
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.send_rounded, size: 18),
+              label: Text(_submitting
+                  ? context.tr('submitting')
+                  : context.tr('submitItems', {'count': _items.length})),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FieldLabel extends StatelessWidget {
+  final String text;
+  const _FieldLabel(this.text);
+
+  @override
+  Widget build(BuildContext context) => Text(
+        text,
+        style: TextStyle(
+          color: context.appColors.textMuted,
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+        ),
+      );
 }

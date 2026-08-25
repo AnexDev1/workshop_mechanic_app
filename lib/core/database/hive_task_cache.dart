@@ -16,6 +16,12 @@ class HiveTaskCache {
   Future<void> saveTasks(
     String key,
     List<Map<String, dynamic>> records,
+  ) =>
+      saveRecords(key, records);
+
+  Future<void> saveRecords(
+    String key,
+    List<Map<String, dynamic>> records,
   ) async {
     await _box.put(key, {
       'cached_at': DateTime.now().toUtc().toIso8601String(),
@@ -24,6 +30,10 @@ class HiveTaskCache {
   }
 
   List<Map<String, dynamic>> getTasks(String key) {
+    return getRecords(key);
+  }
+
+  List<Map<String, dynamic>> getRecords(String key) {
     final cached = _box.get(key);
     if (cached is! Map) return const [];
 
@@ -34,6 +44,19 @@ class HiveTaskCache {
         .whereType<Map>()
         .map((record) => _stringKeyedMap(record))
         .toList();
+  }
+
+  Future<void> saveMap(String key, Map<String, dynamic> value) async {
+    await _box.put(key, {
+      'cached_at': DateTime.now().toUtc().toIso8601String(),
+      'value': value,
+    });
+  }
+
+  Map<String, dynamic>? getMap(String key) {
+    final cached = _box.get(key);
+    if (cached is! Map || cached['value'] is! Map) return null;
+    return _stringKeyedMap(cached['value'] as Map);
   }
 
   Future<void> saveDutyStatus(int userId, bool isCheckedIn) async {
@@ -59,6 +82,47 @@ class HiveTaskCache {
         if (record['id'] != taskId) return record;
         changed = true;
         return <String, dynamic>{...record, ...updates};
+      }).toList();
+
+      if (changed) await saveTasks(key, updatedRecords);
+    }
+  }
+
+  Future<void> finishTaskTimer(
+    int userId,
+    int taskId, {
+    required DateTime stoppedAt,
+    String? status,
+  }) async {
+    final prefixes = ['my_tasks_${userId}_', 'available_tasks_$userId'];
+    for (final key in _box.keys.whereType<String>()) {
+      if (!prefixes.any(key.startsWith)) continue;
+
+      final records = getTasks(key);
+      var changed = false;
+      final updatedRecords = records.map((record) {
+        if (record['id'] != taskId) return record;
+        changed = true;
+
+        final startedValue = record['current_log_start'];
+        final startedAt = startedValue is String
+            ? DateTime.tryParse(
+                startedValue.endsWith('Z') ? startedValue : '${startedValue}Z')
+            : null;
+        final previousHours =
+            (record['actual_hours'] as num?)?.toDouble() ?? 0.0;
+        final elapsedHours = startedAt == null
+            ? 0.0
+            : stoppedAt.difference(startedAt.toUtc()).inMilliseconds /
+                Duration.millisecondsPerHour;
+
+        return <String, dynamic>{
+          ...record,
+          if (status != null) 'status': status,
+          'actual_hours': previousHours + elapsedHours.clamp(0.0, 24.0),
+          'is_working': false,
+          'current_log_start': false,
+        };
       }).toList();
 
       if (changed) await saveTasks(key, updatedRecords);

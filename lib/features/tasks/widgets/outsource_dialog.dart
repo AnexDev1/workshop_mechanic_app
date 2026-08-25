@@ -44,9 +44,9 @@ class _OutsourceDialogState extends State<OutsourceDialog> {
       if (mounted) {
         Navigator.of(context).pop();
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('✅ Outsource request submitted successfully'),
-            backgroundColor: Color(0xFF22C55E),
+          SnackBar(
+            content: const Text('✅ Outsource request submitted successfully'),
+            backgroundColor: context.appColors.success,
           ),
         );
       }
@@ -61,7 +61,7 @@ class _OutsourceDialogState extends State<OutsourceDialog> {
   @override
   Widget build(BuildContext context) {
     return Dialog(
-      backgroundColor: AppColors.surface,
+      backgroundColor: context.appColors.surface,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
       child: Padding(
         padding: const EdgeInsets.all(24),
@@ -76,11 +76,11 @@ class _OutsourceDialogState extends State<OutsourceDialog> {
                   Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: AppColors.warning.withValues(alpha: .12),
+                      color: context.appColors.warning.withValues(alpha: .12),
                       borderRadius: BorderRadius.circular(10),
                     ),
-                    child: const Icon(Icons.open_in_new_rounded,
-                        color: AppColors.warning, size: 20),
+                    child: Icon(Icons.open_in_new_rounded,
+                        color: context.appColors.warning, size: 20),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -88,27 +88,27 @@ class _OutsourceDialogState extends State<OutsourceDialog> {
                         style: GoogleFonts.inter(
                             fontSize: 17,
                             fontWeight: FontWeight.w800,
-                            color: AppColors.text)),
+                            color: context.appColors.text)),
                   ),
                 ],
               ),
               const SizedBox(height: 8),
               Text(widget.task.description,
                   style: GoogleFonts.inter(
-                      fontSize: 12, color: AppColors.textMuted)),
+                      fontSize: 12, color: context.appColors.textMuted)),
               const SizedBox(height: 20),
               if (_error != null) ...[
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: AppColors.danger.withValues(alpha: .1),
+                    color: context.appColors.danger.withValues(alpha: .1),
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(
-                        color: AppColors.danger.withValues(alpha: .35)),
+                        color: context.appColors.danger.withValues(alpha: .35)),
                   ),
                   child: Text(_error!,
                       style: GoogleFonts.inter(
-                          fontSize: 12, color: AppColors.danger)),
+                          fontSize: 12, color: context.appColors.danger)),
                 ),
                 const SizedBox(height: 12),
               ],
@@ -116,7 +116,8 @@ class _OutsourceDialogState extends State<OutsourceDialog> {
               TextFormField(
                 controller: _reasonCtrl,
                 maxLines: 3,
-                style: GoogleFonts.inter(color: Colors.white, fontSize: 13),
+                style: GoogleFonts.inter(
+                    color: context.appColors.text, fontSize: 13),
                 decoration: _inputDecoration('Reason for Outsourcing *',
                     'Describe why this needs external work...'),
                 validator: (v) =>
@@ -128,7 +129,8 @@ class _OutsourceDialogState extends State<OutsourceDialog> {
                 controller: _costCtrl,
                 keyboardType:
                     const TextInputType.numberWithOptions(decimal: true),
-                style: GoogleFonts.inter(color: Colors.white, fontSize: 13),
+                style: GoogleFonts.inter(
+                    color: context.appColors.text, fontSize: 13),
                 decoration:
                     _inputDecoration('Estimated Cost (ETB)', 'e.g. 5000.00'),
               ),
@@ -141,7 +143,7 @@ class _OutsourceDialogState extends State<OutsourceDialog> {
                         padding: const EdgeInsets.symmetric(vertical: 14),
                         shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12)),
-                        foregroundColor: AppColors.textMuted,
+                        foregroundColor: context.appColors.textMuted,
                       ),
                       onPressed:
                           _loading ? null : () => Navigator.of(context).pop(),
@@ -154,8 +156,8 @@ class _OutsourceDialogState extends State<OutsourceDialog> {
                   Expanded(
                     child: ElevatedButton(
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.warning,
-                        foregroundColor: AppColors.background,
+                        backgroundColor: context.appColors.warning,
+                        foregroundColor: context.appColors.background,
                         padding: const EdgeInsets.symmetric(vertical: 14),
                         shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12)),
@@ -186,19 +188,22 @@ class _OutsourceDialogState extends State<OutsourceDialog> {
       InputDecoration(
         labelText: label,
         hintText: hint,
-        labelStyle: GoogleFonts.inter(color: AppColors.textMuted, fontSize: 12),
-        hintStyle: GoogleFonts.inter(color: AppColors.textSubtle, fontSize: 12),
+        labelStyle:
+            GoogleFonts.inter(color: context.appColors.textMuted, fontSize: 12),
+        hintStyle: GoogleFonts.inter(
+            color: context.appColors.textSubtle, fontSize: 12),
         filled: true,
-        fillColor: AppColors.surfaceHigh,
+        fillColor: context.appColors.surfaceHigh,
         border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(color: AppColors.border)),
+            borderSide: BorderSide(color: context.appColors.border)),
         enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(color: AppColors.border)),
+            borderSide: BorderSide(color: context.appColors.border)),
         focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(color: AppColors.warning, width: 1.5)),
+            borderSide:
+                BorderSide(color: context.appColors.warning, width: 1.5)),
         contentPadding:
             const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       );

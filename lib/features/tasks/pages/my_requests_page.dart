@@ -25,6 +25,10 @@ class _MyRequestsPageState extends State<MyRequestsPage> {
   @override
   void initState() {
     super.initState();
+    final repository = sl<TaskRepository>();
+    _mrcvRequests = repository.getCachedMrcvRequests();
+    _outsourceRequests = repository.getCachedOutsourceRequests();
+    _isLoading = _mrcvRequests.isEmpty && _outsourceRequests.isEmpty;
     _connectionSubscription = SyncManager().connectionChanges.listen((online) {
       if (mounted) setState(() => _isOnline = online);
     });
@@ -76,8 +80,8 @@ class _MyRequestsPageState extends State<MyRequestsPage> {
                       fontSize: 20, fontWeight: FontWeight.w800)),
               Text(
                 context.tr('requestHubSubtitle'),
-                style: const TextStyle(
-                  color: AppColors.textMuted,
+                style: TextStyle(
+                  color: context.appColors.textMuted,
                   fontSize: 11,
                   fontWeight: FontWeight.w500,
                 ),
@@ -105,19 +109,19 @@ class _MyRequestsPageState extends State<MyRequestsPage> {
                 height: 48,
                 padding: const EdgeInsets.all(4),
                 decoration: BoxDecoration(
-                  color: AppColors.surface,
+                  color: context.appColors.surface,
                   borderRadius: BorderRadius.circular(15),
-                  border: Border.all(color: AppColors.border),
+                  border: Border.all(color: context.appColors.border),
                 ),
                 child: TabBar(
                   dividerColor: Colors.transparent,
                   indicatorSize: TabBarIndicatorSize.tab,
                   indicator: BoxDecoration(
-                    color: AppColors.primarySoft,
+                    color: context.appColors.primarySoft,
                     borderRadius: BorderRadius.circular(11),
                   ),
-                  labelColor: AppColors.primary,
-                  unselectedLabelColor: AppColors.textMuted,
+                  labelColor: context.appColors.primary,
+                  unselectedLabelColor: context.appColors.textMuted,
                   labelStyle: const TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w800,
@@ -178,13 +182,16 @@ class _SummaryHeader extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
-            gradient: const LinearGradient(
+            gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
-              colors: [AppColors.surfaceHigh, AppColors.surface],
+              colors: [
+                context.appColors.surfaceHigh,
+                context.appColors.surface
+              ],
             ),
             borderRadius: BorderRadius.circular(22),
-            border: Border.all(color: AppColors.border),
+            border: Border.all(color: context.appColors.border),
           ),
           child: Row(
             children: [
@@ -193,10 +200,10 @@ class _SummaryHeader extends StatelessWidget {
                   icon: Icons.inventory_2_outlined,
                   label: context.tr('materials'),
                   value: materialCount,
-                  color: AppColors.warning,
+                  color: context.appColors.warning,
                 ),
               ),
-              Container(width: 1, height: 42, color: AppColors.border),
+              Container(width: 1, height: 42, color: context.appColors.border),
               Expanded(
                 child: _SummaryMetric(
                   icon: Icons.north_east_rounded,
@@ -250,8 +257,8 @@ class _SummaryMetric extends StatelessWidget {
               ),
               const SizedBox(height: 4),
               Text(label,
-                  style: const TextStyle(
-                      color: AppColors.textMuted, fontSize: 10)),
+                  style: TextStyle(
+                      color: context.appColors.textMuted, fontSize: 10)),
             ],
           ),
         ],
@@ -306,13 +313,22 @@ class _RequestList extends StatelessWidget {
   }
 }
 
-class _RequestCard extends StatelessWidget {
+class _RequestCard extends StatefulWidget {
   final Map<String, dynamic> request;
   final _RequestType type;
   const _RequestCard({required this.request, required this.type});
 
   @override
+  State<_RequestCard> createState() => _RequestCardState();
+}
+
+class _RequestCardState extends State<_RequestCard> {
+  bool _expanded = false;
+
+  @override
   Widget build(BuildContext context) {
+    final request = widget.request;
+    final type = widget.type;
     final title = _textValue(request['name'], context.tr('unnamedRequest'));
     final state = _textValue(request['state'], 'pending');
     final date = _textValue(
@@ -323,15 +339,15 @@ class _RequestCard extends StatelessWidget {
         request['workshop_order_id'], context.tr('jobNotSpecified'));
     final status = _RequestStatus.from(context, state);
     final accent = type == _RequestType.material
-        ? AppColors.warning
+        ? context.appColors.warning
         : const Color(0xFFFF8A5B);
 
     return Container(
       padding: const EdgeInsets.all(17),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: context.appColors.surface,
         borderRadius: BorderRadius.circular(19),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: context.appColors.border),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -380,23 +396,25 @@ class _RequestCard extends StatelessWidget {
                   job,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: AppColors.textMuted,
+                  style: TextStyle(
+                    color: context.appColors.textMuted,
                     fontSize: 12,
                     height: 1.35,
                   ),
                 ),
+                if (type == _RequestType.material)
+                  _buildMaterialLines(context, request),
                 if (date.isNotEmpty) ...[
                   const SizedBox(height: 10),
                   Row(
                     children: [
-                      const Icon(Icons.calendar_today_outlined,
-                          size: 13, color: AppColors.textSubtle),
+                      Icon(Icons.calendar_today_outlined,
+                          size: 13, color: context.appColors.textSubtle),
                       const SizedBox(width: 6),
                       Text(
                         _formatDate(date),
-                        style: const TextStyle(
-                            color: AppColors.textSubtle, fontSize: 11),
+                        style: TextStyle(
+                            color: context.appColors.textSubtle, fontSize: 11),
                       ),
                     ],
                   ),
@@ -404,6 +422,83 @@ class _RequestCard extends StatelessWidget {
               ],
             ),
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMaterialLines(
+      BuildContext context, Map<String, dynamic> request) {
+    final rawLines = request['material_lines'];
+    if (rawLines is! List || rawLines.isEmpty) return const SizedBox.shrink();
+    final lines = rawLines.whereType<Map<String, dynamic>>().toList();
+    final visibleLines = _expanded ? lines : lines.take(2).toList();
+
+    return Container(
+      margin: const EdgeInsets.only(top: 12),
+      padding: const EdgeInsets.all(11),
+      decoration: BoxDecoration(
+        color: context.appColors.surfaceHigh,
+        borderRadius: BorderRadius.circular(13),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.inventory_2_outlined,
+                  size: 14, color: context.appColors.warning),
+              const SizedBox(width: 6),
+              Text(
+                context.tr('submittedMaterials'),
+                style: TextStyle(
+                  color: context.appColors.textMuted,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const Spacer(),
+              Text(
+                context.tr('itemCount', {'count': lines.length}),
+                style:
+                    TextStyle(color: context.appColors.textSubtle, fontSize: 9),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          ...visibleLines.map((line) => _MaterialLineRow(line: line)),
+          if (lines.length > 2)
+            InkWell(
+              onTap: () => setState(() => _expanded = !_expanded),
+              borderRadius: BorderRadius.circular(9),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 7),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      _expanded
+                          ? context.tr('showLess')
+                          : context
+                              .tr('viewAllMaterials', {'count': lines.length}),
+                      style: TextStyle(
+                        color: context.appColors.primary,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    Icon(
+                      _expanded
+                          ? Icons.keyboard_arrow_up_rounded
+                          : Icons.keyboard_arrow_down_rounded,
+                      color: context.appColors.primary,
+                      size: 16,
+                    ),
+                  ],
+                ),
+              ),
+            ),
         ],
       ),
     );
@@ -440,24 +535,97 @@ class _RequestCard extends StatelessWidget {
   }
 }
 
+class _MaterialLineRow extends StatelessWidget {
+  final Map<String, dynamic> line;
+  const _MaterialLineRow({required this.line});
+
+  @override
+  Widget build(BuildContext context) {
+    final product =
+        _relationLabel(line['product_id'], context.tr('unnamedMaterial'));
+    final unit = _relationLabel(line['uom_id'], '');
+    final requested = (line['quantity'] as num?)?.toDouble() ?? 0;
+    final issued = (line['issued_qty'] as num?)?.toDouble() ?? 0;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 5,
+            height: 5,
+            margin: const EdgeInsets.only(top: 6),
+            decoration: BoxDecoration(
+                color: context.appColors.warning, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              product,
+              style: TextStyle(
+                color: context.appColors.text,
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                height: 1.35,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                '${requested.toStringAsFixed(2)} $unit',
+                style: TextStyle(
+                  color: context.appColors.text,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              if (issued > 0)
+                Text(
+                  context.tr('issuedQuantity',
+                      {'quantity': issued.toStringAsFixed(2)}),
+                  style:
+                      TextStyle(color: context.appColors.success, fontSize: 9),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _relationLabel(dynamic relation, String fallback) {
+    if (relation is List && relation.length > 1) {
+      return relation[1].toString();
+    }
+    return fallback;
+  }
+}
+
 class _RequestStatus {
   final String label;
   final Color color;
-  const _RequestStatus(this.label, this.color);
+  _RequestStatus(this.label, this.color);
 
   factory _RequestStatus.from(BuildContext context, String state) {
     return switch (state.toLowerCase()) {
       'approved' ||
       'done' =>
-        _RequestStatus(context.tr('approved'), AppColors.success),
+        _RequestStatus(context.tr('approved'), context.appColors.success),
       'rejected' ||
       'cancel' ||
       'cancelled' =>
-        _RequestStatus(context.tr('rejected'), AppColors.danger),
-      'pending' => _RequestStatus(context.tr('pending'), AppColors.warning),
-      'submitted' => _RequestStatus(context.tr('submitted'), AppColors.primary),
-      'draft' => _RequestStatus(context.tr('draft'), AppColors.textMuted),
-      _ => _RequestStatus(_titleCase(state), AppColors.textMuted),
+        _RequestStatus(context.tr('rejected'), context.appColors.danger),
+      'pending' =>
+        _RequestStatus(context.tr('pending'), context.appColors.warning),
+      'submitted' =>
+        _RequestStatus(context.tr('submitted'), context.appColors.primary),
+      'draft' =>
+        _RequestStatus(context.tr('draft'), context.appColors.textMuted),
+      _ => _RequestStatus(_titleCase(state), context.appColors.textMuted),
     };
   }
 
@@ -504,15 +672,15 @@ class _EmptyState extends StatelessWidget {
                 width: 68,
                 height: 68,
                 decoration: BoxDecoration(
-                  color: AppColors.surface,
+                  color: context.appColors.surface,
                   borderRadius: BorderRadius.circular(22),
-                  border: Border.all(color: AppColors.border),
+                  border: Border.all(color: context.appColors.border),
                 ),
                 child: Icon(
                   type == _RequestType.material
                       ? Icons.inventory_2_outlined
                       : Icons.north_east_rounded,
-                  color: AppColors.textSubtle,
+                  color: context.appColors.textSubtle,
                   size: 28,
                 ),
               ),
@@ -528,8 +696,8 @@ class _EmptyState extends StatelessWidget {
               Text(
                 context.tr('newRequestsHint'),
                 textAlign: TextAlign.center,
-                style: const TextStyle(
-                  color: AppColors.textMuted,
+                style: TextStyle(
+                  color: context.appColors.textMuted,
                   fontSize: 12,
                   height: 1.4,
                 ),
@@ -550,19 +718,20 @@ class _ErrorBanner extends StatelessWidget {
         margin: const EdgeInsets.fromLTRB(16, 0, 16, 10),
         padding: const EdgeInsets.fromLTRB(12, 9, 8, 9),
         decoration: BoxDecoration(
-          color: AppColors.danger.withValues(alpha: .09),
+          color: context.appColors.danger.withValues(alpha: .09),
           borderRadius: BorderRadius.circular(13),
-          border: Border.all(color: AppColors.danger.withValues(alpha: .25)),
+          border: Border.all(
+              color: context.appColors.danger.withValues(alpha: .25)),
         ),
         child: Row(
           children: [
-            const Icon(Icons.cloud_off_rounded,
-                color: AppColors.danger, size: 18),
+            Icon(Icons.cloud_off_rounded,
+                color: context.appColors.danger, size: 18),
             const SizedBox(width: 9),
             Expanded(
               child: Text(message,
-                  style: const TextStyle(
-                      color: AppColors.textMuted, fontSize: 11)),
+                  style: TextStyle(
+                      color: context.appColors.textMuted, fontSize: 11)),
             ),
             TextButton(onPressed: onRetry, child: const Text('Retry')),
           ],
@@ -581,9 +750,9 @@ class _RequestSkeleton extends StatelessWidget {
         itemBuilder: (context, index) => Container(
           height: 112,
           decoration: BoxDecoration(
-            color: AppColors.surface,
+            color: context.appColors.surface,
             borderRadius: BorderRadius.circular(19),
-            border: Border.all(color: AppColors.border),
+            border: Border.all(color: context.appColors.border),
           ),
           child: const Center(
             child: SizedBox(

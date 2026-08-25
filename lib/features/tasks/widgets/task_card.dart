@@ -76,8 +76,8 @@ class _TaskCardState extends State<TaskCard> {
         borderRadius: BorderRadius.circular(20),
         side: BorderSide(
           color: task.isWorking
-              ? AppColors.success.withValues(alpha: .55)
-              : AppColors.border,
+              ? context.appColors.success.withValues(alpha: .55)
+              : context.appColors.border,
           width: task.isWorking ? 1.5 : 1,
         ),
       ),
@@ -113,8 +113,8 @@ class _TaskCardState extends State<TaskCard> {
                         task.jobName ?? 'Workshop task #${task.id}',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: AppColors.textMuted,
+                        style: TextStyle(
+                          color: context.appColors.textMuted,
                           fontSize: 11,
                           fontWeight: FontWeight.w600,
                         ),
@@ -124,8 +124,8 @@ class _TaskCardState extends State<TaskCard> {
                         task.description,
                         maxLines: 3,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: AppColors.text,
+                        style: TextStyle(
+                          color: context.appColors.text,
                           fontSize: 15,
                           height: 1.3,
                           fontWeight: FontWeight.w700,
@@ -146,8 +146,8 @@ class _TaskCardState extends State<TaskCard> {
                     const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                 decoration: BoxDecoration(
                   gradient: LinearGradient(colors: [
-                    AppColors.success.withValues(alpha: .16),
-                    AppColors.success.withValues(alpha: .05),
+                    context.appColors.success.withValues(alpha: .16),
+                    context.appColors.success.withValues(alpha: .05),
                   ]),
                   borderRadius: BorderRadius.circular(14),
                 ),
@@ -157,8 +157,8 @@ class _TaskCardState extends State<TaskCard> {
                     const SizedBox(width: 10),
                     Text(
                       context.tr('workTimer'),
-                      style: const TextStyle(
-                        color: AppColors.success,
+                      style: TextStyle(
+                        color: context.appColors.success,
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
                       ),
@@ -166,12 +166,12 @@ class _TaskCardState extends State<TaskCard> {
                     const Spacer(),
                     Text(
                       _formatDuration(_elapsed),
-                      style: const TextStyle(
-                        color: AppColors.text,
+                      style: TextStyle(
+                        color: context.appColors.text,
                         fontSize: 20,
                         fontWeight: FontWeight.w800,
                         letterSpacing: .5,
-                        fontFeatures: [FontFeature.tabularFigures()],
+                        fontFeatures: const [FontFeature.tabularFigures()],
                       ),
                     ),
                   ],
@@ -184,15 +184,17 @@ class _TaskCardState extends State<TaskCard> {
                 Expanded(
                   child: _Metric(
                     label: context.tr('estimated'),
-                    value: '${task.estimatedHours.toStringAsFixed(1)} h',
+                    value: '${_formatHours(task.estimatedHours)} h',
                     icon: Icons.schedule_rounded,
                   ),
                 ),
-                Container(width: 1, height: 30, color: AppColors.border),
+                Container(
+                    width: 1, height: 30, color: context.appColors.border),
                 Expanded(
                   child: _Metric(
                     label: context.tr('logged'),
-                    value: '${task.actualHours.toStringAsFixed(1)} h',
+                    value:
+                        '${_formatHours(task.actualHours + (task.isWorking ? _elapsed.inSeconds / 3600 : 0))} h',
                     icon: Icons.timer_outlined,
                   ),
                 ),
@@ -213,7 +215,7 @@ class _TaskCardState extends State<TaskCard> {
                       icon: Icons.inventory_2_outlined,
                       label:
                           '${task.mrcvRef ?? 'Material'} · ${task.mrcvStatus!.toUpperCase()}',
-                      color: AppColors.warning,
+                      color: context.appColors.warning,
                     ),
                 ],
               ),
@@ -237,9 +239,9 @@ class _TaskCardState extends State<TaskCard> {
                   child: ElevatedButton.icon(
                     style: ElevatedButton.styleFrom(
                       backgroundColor: task.isWorking
-                          ? AppColors.warning
-                          : AppColors.success,
-                      foregroundColor: AppColors.background,
+                          ? context.appColors.warning
+                          : context.appColors.success,
+                      foregroundColor: context.appColors.background,
                     ),
                     onPressed: widget.isProcessing
                         ? null
@@ -306,11 +308,11 @@ class _TaskCardState extends State<TaskCard> {
   }
 
   Color _statusColor(String status) => switch (status) {
-        'working' => AppColors.success,
-        'assigned' => AppColors.primary,
+        'working' => context.appColors.success,
+        'assigned' => context.appColors.primary,
         'completed' || 'reviewed' => const Color(0xFFAD8CFF),
-        'closed' => AppColors.textSubtle,
-        _ => AppColors.textMuted,
+        'closed' => context.appColors.textSubtle,
+        _ => context.appColors.textMuted,
       };
 
   String _statusLabel(BuildContext context, WorkshopTask task) {
@@ -328,6 +330,11 @@ class _TaskCardState extends State<TaskCard> {
     final seconds = duration.inSeconds.remainder(60).toString().padLeft(2, '0');
     return '$hours:$minutes:$seconds';
   }
+
+  String _formatHours(double hours) {
+    if (hours == 0) return '0';
+    return hours.toStringAsFixed(2).replaceFirst(RegExp(r'\.?0+$'), '');
+  }
 }
 
 class _PulseDot extends StatelessWidget {
@@ -338,11 +345,11 @@ class _PulseDot extends StatelessWidget {
         width: 9,
         height: 9,
         decoration: BoxDecoration(
-          color: AppColors.success,
+          color: context.appColors.success,
           shape: BoxShape.circle,
           boxShadow: [
             BoxShadow(
-              color: AppColors.success.withValues(alpha: .45),
+              color: context.appColors.success.withValues(alpha: .45),
               blurRadius: 8,
               spreadRadius: 2,
             ),
@@ -384,17 +391,17 @@ class _Metric extends StatelessWidget {
   Widget build(BuildContext context) => Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(icon, size: 17, color: AppColors.textSubtle),
+          Icon(icon, size: 17, color: context.appColors.textSubtle),
           const SizedBox(width: 8),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(label,
-                  style: const TextStyle(
-                      color: AppColors.textSubtle, fontSize: 10)),
+                  style: TextStyle(
+                      color: context.appColors.textSubtle, fontSize: 10)),
               Text(value,
-                  style: const TextStyle(
-                      color: AppColors.text,
+                  style: TextStyle(
+                      color: context.appColors.text,
                       fontSize: 13,
                       fontWeight: FontWeight.w700)),
             ],
@@ -406,28 +413,30 @@ class _Metric extends StatelessWidget {
 class _InfoChip extends StatelessWidget {
   final IconData icon;
   final String label;
-  final Color color;
+  final Color? color;
   const _InfoChip({
     required this.icon,
     required this.label,
-    this.color = AppColors.textMuted,
+    this.color,
   });
 
   @override
   Widget build(BuildContext context) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
         decoration: BoxDecoration(
-          color: AppColors.surfaceHigh,
+          color: context.appColors.surfaceHigh,
           borderRadius: BorderRadius.circular(10),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 14, color: color),
+            Icon(icon, size: 14, color: color ?? context.appColors.textMuted),
             const SizedBox(width: 6),
             Text(label,
                 style: TextStyle(
-                    color: color, fontSize: 11, fontWeight: FontWeight.w600)),
+                    color: color ?? context.appColors.textMuted,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600)),
           ],
         ),
       );

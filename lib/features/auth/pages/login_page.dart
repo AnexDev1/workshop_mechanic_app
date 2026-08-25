@@ -74,17 +74,20 @@ class _LoginPageState extends State<LoginPage>
             ScaffoldMessenger.of(ctx).showSnackBar(
               SnackBar(
                 content: Text(state.message),
-                backgroundColor: Colors.red.shade700,
+                backgroundColor: context.appColors.danger,
               ),
             );
           }
         },
         child: Container(
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             gradient: RadialGradient(
               center: Alignment.topRight,
               radius: 1.3,
-              colors: [Color(0xFF18345C), AppColors.background],
+              colors: [
+                context.appColors.primarySoft,
+                context.appColors.background,
+              ],
             ),
           ),
           child: SafeArea(
@@ -104,13 +107,14 @@ class _LoginPageState extends State<LoginPage>
                             height: 76,
                             padding: const EdgeInsets.all(3),
                             decoration: BoxDecoration(
-                              color: AppColors.surface,
+                              color: context.appColors.surface,
                               borderRadius: BorderRadius.circular(22),
-                              border: Border.all(color: AppColors.border),
+                              border:
+                                  Border.all(color: context.appColors.border),
                               boxShadow: [
                                 BoxShadow(
-                                  color:
-                                      AppColors.primary.withValues(alpha: .18),
+                                  color: context.appColors.primary
+                                      .withValues(alpha: .18),
                                   blurRadius: 32,
                                   spreadRadius: 1,
                                 ),
@@ -130,7 +134,7 @@ class _LoginPageState extends State<LoginPage>
                             style: GoogleFonts.inter(
                               fontSize: 28,
                               fontWeight: FontWeight.w800,
-                              color: AppColors.text,
+                              color: context.appColors.text,
                               letterSpacing: -0.8,
                             ),
                           ),
@@ -138,7 +142,8 @@ class _LoginPageState extends State<LoginPage>
                           Text(
                             context.tr('signInSubtitle'),
                             style: GoogleFonts.inter(
-                                fontSize: 14, color: AppColors.textMuted),
+                                fontSize: 14,
+                                color: context.appColors.textMuted),
                           ),
                           const SizedBox(height: 32),
 
@@ -146,9 +151,11 @@ class _LoginPageState extends State<LoginPage>
                           Container(
                             padding: const EdgeInsets.all(20),
                             decoration: BoxDecoration(
-                              color: AppColors.surface.withValues(alpha: .94),
+                              color: context.appColors.surface
+                                  .withValues(alpha: .94),
                               borderRadius: BorderRadius.circular(24),
-                              border: Border.all(color: AppColors.border),
+                              border:
+                                  Border.all(color: context.appColors.border),
                             ),
                             child: Form(
                               key: _formKey,
@@ -185,13 +192,13 @@ class _LoginPageState extends State<LoginPage>
                                       tilePadding: EdgeInsets.zero,
                                       childrenPadding:
                                           const EdgeInsets.only(bottom: 8),
-                                      leading: const Icon(Icons.dns_outlined,
+                                      leading: Icon(Icons.dns_outlined,
                                           size: 19,
-                                          color: AppColors.textSubtle),
+                                          color: context.appColors.textSubtle),
                                       title: Text(
                                         context.tr('serverSettings'),
-                                        style: const TextStyle(
-                                          color: AppColors.textMuted,
+                                        style: TextStyle(
+                                          color: context.appColors.textMuted,
                                           fontSize: 13,
                                           fontWeight: FontWeight.w600,
                                         ),
@@ -219,7 +226,8 @@ class _LoginPageState extends State<LoginPage>
                                         height: 52,
                                         child: ElevatedButton(
                                           style: ElevatedButton.styleFrom(
-                                            backgroundColor: AppColors.primary,
+                                            backgroundColor:
+                                                context.appColors.primary,
                                             foregroundColor: Colors.white,
                                             shape: RoundedRectangleBorder(
                                               borderRadius:
@@ -266,8 +274,8 @@ class _LoginPageState extends State<LoginPage>
                     tooltip: context.tr('language'),
                     initialValue: AppLocaleController.instance.value,
                     onSelected: AppLocaleController.instance.setLanguage,
-                    icon: const Icon(Icons.language_rounded,
-                        color: AppColors.textMuted),
+                    icon: Icon(Icons.language_rounded,
+                        color: context.appColors.textMuted),
                     itemBuilder: (context) => [
                       PopupMenuItem(
                           value: 'en', child: Text(context.tr('english'))),
@@ -298,42 +306,44 @@ class _LoginPageState extends State<LoginPage>
     return TextFormField(
       controller: controller,
       obscureText: obscure,
-      style: GoogleFonts.inter(color: AppColors.text, fontSize: 14),
+      style: GoogleFonts.inter(color: context.appColors.text, fontSize: 14),
       decoration: InputDecoration(
         labelText: label,
         hintText: hint,
-        labelStyle: GoogleFonts.inter(color: AppColors.textMuted, fontSize: 13),
-        hintStyle: GoogleFonts.inter(color: AppColors.textSubtle, fontSize: 13),
-        prefixIcon: Icon(icon, color: AppColors.textMuted, size: 20),
+        labelStyle:
+            GoogleFonts.inter(color: context.appColors.textMuted, fontSize: 13),
+        hintStyle: GoogleFonts.inter(
+            color: context.appColors.textSubtle, fontSize: 13),
+        prefixIcon: Icon(icon, color: context.appColors.textMuted, size: 20),
         suffixIcon: toggleObscure != null
             ? IconButton(
                 icon: Icon(
                   obscure
                       ? Icons.visibility_rounded
                       : Icons.visibility_off_rounded,
-                  color: AppColors.textMuted,
+                  color: context.appColors.textMuted,
                   size: 20,
                 ),
                 onPressed: toggleObscure,
               )
             : null,
         filled: true,
-        fillColor: AppColors.surfaceHigh,
+        fillColor: context.appColors.surfaceHigh,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: AppColors.border),
+          borderSide: BorderSide(color: context.appColors.border),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: AppColors.border),
+          borderSide: BorderSide(color: context.appColors.border),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
+          borderSide: BorderSide(color: context.appColors.primary, width: 1.5),
         ),
         errorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: Colors.red),
+          borderSide: BorderSide(color: context.appColors.danger),
         ),
         contentPadding:
             const EdgeInsets.symmetric(horizontal: 16, vertical: 14),

@@ -12,6 +12,7 @@ import 'features/tasks/pages/task_list_page.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await AppLocaleController.instance.initialize();
+  await appThemeController.initialize();
   await setupServiceLocator();
   runApp(const WorkshopMechanicApp());
 }
@@ -27,23 +28,30 @@ class WorkshopMechanicApp extends StatelessWidget {
         controller: AppLocaleController.instance,
         child: ValueListenableBuilder<String>(
           valueListenable: AppLocaleController.instance,
-          builder: (context, language, _) => MaterialApp(
-            title: AppStrings.translate('workshop'),
-            debugShowCheckedModeBanner: false,
-            theme: AppTheme.dark,
-            locale: language == 'am' ? const Locale('am') : const Locale('en'),
-            supportedLocales: const [Locale('en'), Locale('am')],
-            localizationsDelegates: GlobalMaterialLocalizations.delegates,
-            home: BlocBuilder<AuthBloc, AuthState>(
-              builder: (ctx, state) {
-                if (state is AuthAuthenticated) {
-                  return BlocProvider(
-                    create: (_) => sl<TaskBloc>()..add(const LoadTasks()),
-                    child: const TaskListPage(),
-                  );
-                }
-                return const LoginPage();
-              },
+          builder: (context, language, _) => ValueListenableBuilder<ThemeMode>(
+            valueListenable: appThemeController,
+            builder: (context, themeMode, _) => MaterialApp(
+              title: AppStrings.translate('workshop'),
+              debugShowCheckedModeBanner: false,
+              theme: AppTheme.light,
+              darkTheme: AppTheme.dark,
+              themeMode: themeMode,
+              themeAnimationDuration: const Duration(milliseconds: 220),
+              locale:
+                  language == 'am' ? const Locale('am') : const Locale('en'),
+              supportedLocales: const [Locale('en'), Locale('am')],
+              localizationsDelegates: GlobalMaterialLocalizations.delegates,
+              home: BlocBuilder<AuthBloc, AuthState>(
+                builder: (ctx, state) {
+                  if (state is AuthAuthenticated) {
+                    return BlocProvider(
+                      create: (_) => sl<TaskBloc>()..add(const LoadTasks()),
+                      child: const TaskListPage(),
+                    );
+                  }
+                  return const LoginPage();
+                },
+              ),
             ),
           ),
         ),

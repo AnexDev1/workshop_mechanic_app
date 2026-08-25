@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import '../../../core/network/odoo_client.dart';
 import '../../../core/database/database_helper.dart';
 import '../../../core/database/hive_task_cache.dart';
@@ -22,11 +24,35 @@ class TaskRepository {
   String get _availableTasksCacheKey =>
       'available_tasks_${_client.session!.uid}';
 
+  String _mrcvRequestsCacheKey(int uid) => 'mrcv_requests_$uid';
+  String _outsourceRequestsCacheKey(int uid) => 'outsource_requests_$uid';
+  String _performanceCacheKey(int uid) => 'mechanic_performance_$uid';
+
+  List<Map<String, dynamic>> getCachedMrcvRequests() {
+    final uid = _client.session?.uid;
+    return uid == null
+        ? const []
+        : _taskCache.getRecords(_mrcvRequestsCacheKey(uid));
+  }
+
+  List<Map<String, dynamic>> getCachedOutsourceRequests() {
+    final uid = _client.session?.uid;
+    return uid == null
+        ? const []
+        : _taskCache.getRecords(_outsourceRequestsCacheKey(uid));
+  }
+
+  Map<String, dynamic>? getCachedMechanicPerformance() {
+    final uid = _client.session?.uid;
+    return uid == null ? null : _taskCache.getMap(_performanceCacheKey(uid));
+  }
+
   static const List<String> _taskFields = [
     'id',
     'description',
     'status',
     'estimated_hours',
+    'actual_hours',
     'notes',
     'status',
     'job_status',
@@ -174,7 +200,11 @@ class TaskRepository {
         return;
       } catch (_) {}
     }
-    await _dbHelper.queueAction('start_timer', taskId);
+    await _dbHelper.queueAction(
+      'start_timer',
+      taskId,
+      payload: _timestampPayload(),
+    );
     await _cacheTaskStarted(taskId);
   }
 
@@ -193,7 +223,11 @@ class TaskRepository {
         return;
       } catch (_) {}
     }
-    await _dbHelper.queueAction('stop_timer', taskId);
+    await _dbHelper.queueAction(
+      'stop_timer',
+      taskId,
+      payload: _timestampPayload(),
+    );
     await _cacheTaskStopped(taskId);
   }
 
@@ -202,14 +236,54 @@ class TaskRepository {
     final uid = _client.session?.uid;
     if (uid == null) return [];
 
-    return await _client.searchRead(
-      model: 'mrcv.header',
-      domain: [
-        ['create_uid', '=', uid]
-      ],
-      fields: ['name', 'state', 'workshop_order_id', 'create_date'],
-      order: 'create_date desc',
-    );
+    if (!_syncManager.isOnline) {
+      return _taskCache.getRecords(_mrcvRequestsCacheKey(uid));
+    }
+
+    try {
+      final requests = await _client.searchRead(
+        model: 'mrcv.header',
+        domain: [
+          ['create_uid', '=', uid]
+        ],
+        fields: [
+          'name',
+          'state',
+          'workshop_order_id',
+          'create_date',
+          'line_ids'
+        ],
+        order: 'create_date desc',
+      );
+
+      final requestIds =
+          requests.map((request) => request['id']).whereType<int>().toList();
+      if (requestIds.isNotEmpty) {
+        final lines = await _client.searchRead(
+          model: 'mrcv.line',
+          domain: [
+            ['mrcv_id', 'in', requestIds]
+          ],
+          fields: ['mrcv_id', 'product_id', 'quantity', 'issued_qty', 'uom_id'],
+          order: 'id asc',
+        );
+
+        final linesByRequest = <int, List<Map<String, dynamic>>>{};
+        for (final line in lines) {
+          final mrcv = line['mrcv_id'];
+          if (mrcv is! List || mrcv.isEmpty) continue;
+          linesByRequest.putIfAbsent(mrcv[0] as int, () => []).add(line);
+        }
+        for (final request in requests) {
+          request['material_lines'] =
+              linesByRequest[request['id'] as int] ?? <Map<String, dynamic>>[];
+        }
+      }
+      await _taskCache.saveRecords(_mrcvRequestsCacheKey(uid), requests);
+      return requests;
+    } catch (_) {
+      return _taskCache.getRecords(_mrcvRequestsCacheKey(uid));
+    }
   }
 
   /// Get the mechanic's outsource requests
@@ -217,14 +291,24 @@ class TaskRepository {
     final uid = _client.session?.uid;
     if (uid == null) return [];
 
-    return await _client.searchRead(
-      model: 'workshop.outsource.request',
-      domain: [
-        ['requester_id', '=', uid]
-      ],
-      fields: ['name', 'state', 'workshop_order_id', 'date'],
-      order: 'date desc',
-    );
+    if (!_syncManager.isOnline) {
+      return _taskCache.getRecords(_outsourceRequestsCacheKey(uid));
+    }
+
+    try {
+      final requests = await _client.searchRead(
+        model: 'workshop.outsource.request',
+        domain: [
+          ['requester_id', '=', uid]
+        ],
+        fields: ['name', 'state', 'workshop_order_id', 'date'],
+        order: 'date desc',
+      );
+      await _taskCache.saveRecords(_outsourceRequestsCacheKey(uid), requests);
+      return requests;
+    } catch (_) {
+      return _taskCache.getRecords(_outsourceRequestsCacheKey(uid));
+    }
   }
 
   /// Mark a task as done (Section Check)
@@ -242,7 +326,11 @@ class TaskRepository {
         return;
       } catch (_) {}
     }
-    await _dbHelper.queueAction('mark_done', taskId);
+    await _dbHelper.queueAction(
+      'mark_done',
+      taskId,
+      payload: _timestampPayload(),
+    );
     await _cacheTaskCompleted(taskId);
   }
 
@@ -259,27 +347,25 @@ class TaskRepository {
   }
 
   Future<void> _cacheTaskStopped(int taskId) {
-    return _taskCache.updateTask(
+    return _taskCache.finishTaskTimer(
       _client.session!.uid,
       taskId,
-      {
-        'is_working': false,
-        'current_log_start': false,
-      },
+      stoppedAt: DateTime.now().toUtc(),
     );
   }
 
   Future<void> _cacheTaskCompleted(int taskId) {
-    return _taskCache.updateTask(
+    return _taskCache.finishTaskTimer(
       _client.session!.uid,
       taskId,
-      {
-        'status': 'completed',
-        'is_working': false,
-        'current_log_start': false,
-      },
+      stoppedAt: DateTime.now().toUtc(),
+      status: 'completed',
     );
   }
+
+  String _timestampPayload() => jsonEncode({
+        'timestamp': DateTime.now().toUtc().toIso8601String(),
+      });
 
   /// Submit an Outsource Request from the app
   Future<void> requestOutsource({
@@ -290,14 +376,12 @@ class TaskRepository {
   }) async {
     await _client.callKw(
       model: 'workshop.outsource.request',
-      method: 'create',
+      method: 'action_create_from_mobile',
       args: [
-        {
-          'workshop_order_id': jobId,
-          'task_id': taskId,
-          'reason': reason,
-          'estimated_cost': estimatedCost ?? 0.0,
-        }
+        jobId,
+        taskId,
+        reason,
+        estimatedCost ?? 0.0,
       ],
     );
   }
@@ -407,6 +491,19 @@ class TaskRepository {
     );
   }
 
+  Future<void> createMrcvRequestItems({
+    required int jobId,
+    required int warehouseId,
+    required List<Map<String, dynamic>> items,
+    String? reason,
+  }) async {
+    await _client.callKw(
+      model: 'mrcv.header',
+      method: 'action_create_from_mobile',
+      args: [jobId, warehouseId, false, false, reason, items],
+    );
+  }
+
   /// Get available warehouses for MRCV creation
   Future<Map<String, dynamic>> getMrcvContext(int jobId) async {
     final result = await _client.callKw(
@@ -476,14 +573,19 @@ class TaskRepository {
   Future<Map<String, dynamic>> getMechanicPerformance() async {
     final fallbackName =
         _client.session?.userName ?? _client.session?.login ?? 'Technician';
-    if (_client.session == null) {
-      return {
-        'name': fallbackName,
-        'section': 'Workshop',
-        'working_hours': 0.0,
-        'idle_hours': 0.0,
-        'efficiency': 0.0,
-      };
+    final uid = _client.session?.uid;
+    final fallback = <String, dynamic>{
+      'name': fallbackName,
+      'section': 'Workshop',
+      'working_hours': 0.0,
+      'idle_hours': 0.0,
+      'efficiency': 0.0,
+    };
+    if (uid == null) return fallback;
+
+    final cached = _taskCache.getMap(_performanceCacheKey(uid));
+    if (!_syncManager.isOnline) {
+      return cached ?? fallback;
     }
     try {
       final records = await _client.searchRead(
@@ -514,7 +616,7 @@ class TaskRepository {
           section = (rec['section_id'] as List)[1] as String;
         }
 
-        return {
+        final performance = <String, dynamic>{
           'name': rec['name'] is String && (rec['name'] as String).isNotEmpty
               ? rec['name']
               : fallbackName,
@@ -523,6 +625,8 @@ class TaskRepository {
           'idle_hours': idle,
           'efficiency': efficiency,
         };
+        await _taskCache.saveMap(_performanceCacheKey(uid), performance);
+        return performance;
       } else {
         final logs = await _client.searchRead(
           model: 'workshop.time.log',
@@ -544,21 +648,17 @@ class TaskRepository {
         final total = working + idle;
         final efficiency =
             total > 0 ? (working / total * 100).roundToDouble() : 0.0;
-        return {
+        final performance = <String, dynamic>{
           'name': fallbackName,
           'section': 'Workshop',
           'working_hours': working,
           'idle_hours': idle,
           'efficiency': efficiency,
         };
+        await _taskCache.saveMap(_performanceCacheKey(uid), performance);
+        return performance;
       }
     } catch (_) {}
-    return {
-      'name': fallbackName,
-      'section': 'Workshop',
-      'working_hours': 0.0,
-      'idle_hours': 0.0,
-      'efficiency': 0.0,
-    };
+    return cached ?? fallback;
   }
 }

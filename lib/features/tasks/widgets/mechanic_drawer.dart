@@ -20,6 +20,8 @@ class _MechanicDrawerState extends State<MechanicDrawer> {
   @override
   void initState() {
     super.initState();
+    _performance = sl<TaskRepository>().getCachedMechanicPerformance();
+    _loading = _performance == null;
     _loadPerformance();
   }
 
@@ -27,6 +29,8 @@ class _MechanicDrawerState extends State<MechanicDrawer> {
     try {
       final data = await sl<TaskRepository>().getMechanicPerformance();
       if (mounted) setState(() => _performance = data);
+    } catch (_) {
+      // Keep the last persisted snapshot visible when refresh fails.
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -43,7 +47,7 @@ class _MechanicDrawerState extends State<MechanicDrawer> {
 
     return Drawer(
       width: MediaQuery.sizeOf(context).width * .88,
-      backgroundColor: AppColors.background,
+      backgroundColor: context.appColors.background,
       child: SafeArea(
         child: Column(
           children: [
@@ -65,8 +69,8 @@ class _MechanicDrawerState extends State<MechanicDrawer> {
                         setState(() => _loading = true);
                         _loadPerformance();
                       },
-                      icon: const Icon(Icons.refresh_rounded,
-                          size: 18, color: AppColors.textMuted),
+                      icon: Icon(Icons.refresh_rounded,
+                          size: 18, color: context.appColors.textMuted),
                     ),
                   ),
                   Padding(
@@ -104,12 +108,6 @@ class _MechanicDrawerState extends State<MechanicDrawer> {
                       );
                     },
                   ),
-                  const SizedBox(height: 16),
-                  _SectionHeader(title: context.tr('language')),
-                  _LanguageSelector(
-                    selectedLanguage: AppLocaleController.instance.value,
-                    onSelected: AppLocaleController.instance.setLanguage,
-                  ),
                 ],
               ),
             ),
@@ -118,9 +116,9 @@ class _MechanicDrawerState extends State<MechanicDrawer> {
               padding: const EdgeInsets.all(16),
               child: OutlinedButton.icon(
                 style: OutlinedButton.styleFrom(
-                  foregroundColor: AppColors.danger,
+                  foregroundColor: context.appColors.danger,
                   side: BorderSide(
-                      color: AppColors.danger.withValues(alpha: .35)),
+                      color: context.appColors.danger.withValues(alpha: .35)),
                   minimumSize: const Size.fromHeight(50),
                 ),
                 onPressed: () {
@@ -157,13 +155,13 @@ class _ProfileHeader extends StatelessWidget {
               width: 54,
               height: 54,
               decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [AppColors.primary, Color(0xFF785CFF)],
+                gradient: LinearGradient(
+                  colors: [context.appColors.primary, const Color(0xFF785CFF)],
                 ),
                 borderRadius: BorderRadius.circular(18),
                 boxShadow: [
                   BoxShadow(
-                    color: AppColors.primary.withValues(alpha: .2),
+                    color: context.appColors.primary.withValues(alpha: .2),
                     blurRadius: 18,
                   ),
                 ],
@@ -195,8 +193,8 @@ class _ProfileHeader extends StatelessWidget {
                     section,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                        color: AppColors.textMuted, fontSize: 12),
+                    style: TextStyle(
+                        color: context.appColors.textMuted, fontSize: 12),
                   ),
                 ],
               ),
@@ -204,7 +202,8 @@ class _ProfileHeader extends StatelessWidget {
             IconButton(
               tooltip: 'Close menu',
               onPressed: onClose,
-              icon: const Icon(Icons.close_rounded, color: AppColors.textMuted),
+              icon:
+                  Icon(Icons.close_rounded, color: context.appColors.textMuted),
             ),
           ],
         ),
@@ -225,13 +224,13 @@ class _PerformanceCard extends StatelessWidget {
   Widget build(BuildContext context) => Container(
         padding: const EdgeInsets.all(17),
         decoration: BoxDecoration(
-          gradient: const LinearGradient(
+          gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [AppColors.surfaceHigh, AppColors.surface],
+            colors: [context.appColors.surfaceHigh, context.appColors.surface],
           ),
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: AppColors.border),
+          border: Border.all(color: context.appColors.border),
         ),
         child: Column(
           children: [
@@ -241,26 +240,27 @@ class _PerformanceCard extends StatelessWidget {
                     child: _Metric(
                         label: context.tr('working'),
                         value: '${working.toStringAsFixed(1)}h',
-                        color: AppColors.success)),
-                Container(width: 1, height: 38, color: AppColors.border),
+                        color: context.appColors.success)),
+                Container(
+                    width: 1, height: 38, color: context.appColors.border),
                 Expanded(
                     child: _Metric(
                         label: context.tr('idle'),
                         value: '${idle.toStringAsFixed(1)}h',
-                        color: AppColors.warning)),
+                        color: context.appColors.warning)),
               ],
             ),
             const SizedBox(height: 17),
             Row(
               children: [
                 Text(context.tr('dailyEfficiency'),
-                    style: const TextStyle(
-                        color: AppColors.textMuted, fontSize: 11)),
+                    style: TextStyle(
+                        color: context.appColors.textMuted, fontSize: 11)),
                 const Spacer(),
                 Text(
                   '${efficiency.toStringAsFixed(0)}%',
-                  style: const TextStyle(
-                    color: AppColors.primary,
+                  style: TextStyle(
+                    color: context.appColors.primary,
                     fontSize: 12,
                     fontWeight: FontWeight.w800,
                   ),
@@ -273,7 +273,7 @@ class _PerformanceCard extends StatelessWidget {
               child: LinearProgressIndicator(
                 value: (efficiency / 100).clamp(0, 1),
                 minHeight: 7,
-                backgroundColor: AppColors.background,
+                backgroundColor: context.appColors.background,
               ),
             ),
           ],
@@ -293,8 +293,8 @@ class _SectionHeader extends StatelessWidget {
           children: [
             Text(
               title,
-              style: const TextStyle(
-                color: AppColors.textSubtle,
+              style: TextStyle(
+                color: context.appColors.textSubtle,
                 fontSize: 10,
                 letterSpacing: 1.2,
                 fontWeight: FontWeight.w800,
@@ -305,67 +305,6 @@ class _SectionHeader extends StatelessWidget {
           ],
         ),
       );
-}
-
-class _LanguageSelector extends StatelessWidget {
-  final String selectedLanguage;
-  final ValueChanged<String> onSelected;
-  const _LanguageSelector({
-    required this.selectedLanguage,
-    required this.onSelected,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final languages = [
-      ('en', context.tr('english')),
-      ('am', context.tr('amharic')),
-      ('om', context.tr('oromo')),
-    ];
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Container(
-        padding: const EdgeInsets.all(5),
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppColors.border),
-        ),
-        child: Row(
-          children: languages.map((language) {
-            final selected = language.$1 == selectedLanguage;
-            return Expanded(
-              child: InkWell(
-                onTap: () => onSelected(language.$1),
-                borderRadius: BorderRadius.circular(12),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
-                  padding: const EdgeInsets.symmetric(vertical: 10),
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color:
-                        selected ? AppColors.primarySoft : Colors.transparent,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    language.$2,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: selected ? AppColors.primary : AppColors.textMuted,
-                      fontSize: 10,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-              ),
-            );
-          }).toList(),
-        ),
-      ),
-    );
-  }
 }
 
 class _Metric extends StatelessWidget {
@@ -379,8 +318,8 @@ class _Metric extends StatelessWidget {
   Widget build(BuildContext context) => Column(
         children: [
           Text(label,
-              style: const TextStyle(
-                  color: AppColors.textSubtle,
+              style: TextStyle(
+                  color: context.appColors.textSubtle,
                   fontSize: 9,
                   fontWeight: FontWeight.w700)),
           const SizedBox(height: 4),
@@ -411,30 +350,36 @@ class _NavItem extends StatelessWidget {
         child: ListTile(
           contentPadding:
               const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-          tileColor:
-              isActive ? AppColors.primarySoft.withValues(alpha: .65) : null,
+          tileColor: isActive
+              ? context.appColors.primarySoft.withValues(alpha: .65)
+              : null,
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
           leading: Container(
             width: 42,
             height: 42,
             decoration: BoxDecoration(
-              color: isActive ? AppColors.primary : AppColors.primarySoft,
+              color: isActive
+                  ? context.appColors.primary
+                  : context.appColors.primarySoft,
               borderRadius: BorderRadius.circular(13),
             ),
             child: Icon(icon,
-                color: isActive ? Colors.white : AppColors.primary, size: 20),
+                color: isActive ? Colors.white : context.appColors.primary,
+                size: 20),
           ),
           title: Text(title,
               style:
                   const TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
           subtitle: Text(subtitle,
               style:
-                  const TextStyle(fontSize: 11, color: AppColors.textSubtle)),
+                  TextStyle(fontSize: 11, color: context.appColors.textSubtle)),
           trailing: Icon(
             isActive ? Icons.circle : Icons.chevron_right_rounded,
             size: isActive ? 7 : 22,
-            color: isActive ? AppColors.primary : AppColors.textSubtle,
+            color: isActive
+                ? context.appColors.primary
+                : context.appColors.textSubtle,
           ),
           onTap: onTap,
         ),

@@ -115,6 +115,9 @@ class SyncManager {
         final id = action['id'] as int;
         final type = action['action_type'] as String;
         final taskId = action['task_id'] as int;
+        final payload = _parsePayload(action['payload'] as String? ?? '');
+        final eventTimestamp =
+            payload['timestamp'] ?? action['created_at'] as String?;
 
         try {
           if (type == 'claim') {
@@ -130,7 +133,8 @@ class SyncManager {
               model: 'workshop.task',
               method: 'action_start_timer',
               args: [
-                [taskId]
+                [taskId],
+                eventTimestamp,
               ],
             );
           } else if (type == 'stop_timer') {
@@ -138,7 +142,8 @@ class SyncManager {
               model: 'workshop.task',
               method: 'action_stop_timer',
               args: [
-                [taskId]
+                [taskId],
+                eventTimestamp,
               ],
             );
           } else if (type == 'mark_done') {
@@ -146,7 +151,8 @@ class SyncManager {
               model: 'workshop.task',
               method: 'action_done',
               args: [
-                [taskId]
+                [taskId],
+                eventTimestamp,
               ],
             );
           } else if (type == 'check_in') {

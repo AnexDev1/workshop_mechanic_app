@@ -58,7 +58,7 @@ class _TaskListPageState extends State<TaskListPage> {
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
             content: Text(_syncFailureMessage(result)),
             duration: const Duration(seconds: 8),
-            backgroundColor: AppColors.danger,
+            backgroundColor: context.appColors.danger,
           ));
         }
       } else if (result.failureKind == null) {
@@ -172,10 +172,10 @@ class _TaskListPageState extends State<TaskListPage> {
           seconds: result.failureKind == null ? 4 : 8,
         ),
         backgroundColor: result.failureKind != null
-            ? AppColors.danger
+            ? context.appColors.danger
             : result.remainingCount == 0
-                ? Colors.green.shade700
-                : Colors.amber,
+                ? context.appColors.success
+                : context.appColors.warning,
       ));
     } on TimeoutException {
       if (!mounted) return;
@@ -184,7 +184,7 @@ class _TaskListPageState extends State<TaskListPage> {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text(context.tr('syncTimedOut')),
         duration: const Duration(seconds: 6),
-        backgroundColor: AppColors.warning,
+        backgroundColor: context.appColors.warning,
       ));
     } catch (_) {
       if (!mounted) return;
@@ -308,8 +308,9 @@ class _TaskListPageState extends State<TaskListPage> {
               Expanded(child: Text(statusMsg)),
             ],
           ),
-          backgroundColor:
-              isOnlineSync ? Colors.green.shade700 : Colors.amber.shade800,
+          backgroundColor: isOnlineSync
+              ? context.appColors.success
+              : context.appColors.warning,
         ),
       );
     } catch (e) {
@@ -407,15 +408,61 @@ class _TaskListPageState extends State<TaskListPage> {
                     const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
             Text(
               DateFormat('EEEE, d MMMM').format(DateTime.now()),
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 11,
-                color: AppColors.textMuted,
+                color: context.appColors.textMuted,
                 fontWeight: FontWeight.w500,
               ),
             ),
           ],
         ),
         actions: [
+          PopupMenuButton<String>(
+            tooltip: context.tr('language'),
+            initialValue: AppLocaleController.instance.value,
+            onSelected: AppLocaleController.instance.setLanguage,
+            position: PopupMenuPosition.under,
+            itemBuilder: (_) => const [
+              PopupMenuItem(value: 'en', child: Text('EN')),
+              PopupMenuItem(value: 'am', child: Text('AM')),
+              PopupMenuItem(value: 'om', child: Text('OM')),
+            ],
+            child: Container(
+              constraints: const BoxConstraints(minWidth: 42, minHeight: 42),
+              alignment: Alignment.center,
+              child: Text(
+                AppLocaleController.instance.value.toUpperCase(),
+                style: TextStyle(
+                  color: context.appColors.primary,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: .5,
+                ),
+              ),
+            ),
+          ),
+          ValueListenableBuilder<ThemeMode>(
+            valueListenable: appThemeController,
+            builder: (context, mode, _) {
+              final isDark = Theme.of(context).brightness == Brightness.dark;
+              return IconButton(
+                tooltip: isDark
+                    ? context.tr('switchToLight')
+                    : context.tr('switchToDark'),
+                onPressed: () => appThemeController
+                    .setMode(isDark ? ThemeMode.light : ThemeMode.dark),
+                icon: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 180),
+                  transitionBuilder: (child, animation) =>
+                      RotationTransition(turns: animation, child: child),
+                  child: Icon(
+                    isDark ? Icons.light_mode_rounded : Icons.dark_mode_rounded,
+                    key: ValueKey(isDark),
+                  ),
+                ),
+              );
+            },
+          ),
           IconButton(
             tooltip: _isOnline
                 ? context.tr('refreshTasks')
@@ -440,8 +487,9 @@ class _TaskListPageState extends State<TaskListPage> {
               },
               builder: (ctx, state) {
                 if (state is TaskLoading) {
-                  return const Center(
-                    child: CircularProgressIndicator(color: Color(0xFF3B82F6)),
+                  return Center(
+                    child: CircularProgressIndicator(
+                        color: context.appColors.primary),
                   );
                 }
                 if (state is TaskError) {
@@ -530,31 +578,32 @@ class _TaskListPageState extends State<TaskListPage> {
 
   Widget _buildShiftPanel() {
     final hasPending = _pendingSyncCount > 0;
-    final dutyColor = _isCheckedIn ? AppColors.success : AppColors.textMuted;
+    final dutyColor =
+        _isCheckedIn ? context.appColors.success : context.appColors.textMuted;
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
       child: Container(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
         decoration: BoxDecoration(
-          gradient: const LinearGradient(
+          gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [AppColors.surfaceHigh, AppColors.surface],
+            colors: [context.appColors.surfaceHigh, context.appColors.surface],
           ),
-          borderRadius: BorderRadius.circular(22),
-          border: Border.all(color: AppColors.border),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: context.appColors.border),
         ),
         child: Column(
           children: [
             Row(
               children: [
                 Container(
-                  width: 44,
-                  height: 44,
+                  width: 38,
+                  height: 38,
                   decoration: BoxDecoration(
                     color: dutyColor.withValues(alpha: .12),
-                    borderRadius: BorderRadius.circular(14),
+                    borderRadius: BorderRadius.circular(12),
                   ),
                   child: Icon(
                     _isCheckedIn
@@ -563,7 +612,7 @@ class _TaskListPageState extends State<TaskListPage> {
                     color: dutyColor,
                   ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 10),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -573,7 +622,7 @@ class _TaskListPageState extends State<TaskListPage> {
                             ? context.tr('shiftActive')
                             : context.tr('offDuty'),
                         style: const TextStyle(
-                          fontSize: 16,
+                          fontSize: 15,
                           fontWeight: FontWeight.w800,
                           letterSpacing: -.2,
                         ),
@@ -583,8 +632,8 @@ class _TaskListPageState extends State<TaskListPage> {
                         _isCheckedIn
                             ? context.tr('locationRecorded')
                             : context.tr('checkInHint'),
-                        style: const TextStyle(
-                            color: AppColors.textMuted, fontSize: 11),
+                        style: TextStyle(
+                            color: context.appColors.textMuted, fontSize: 11),
                       ),
                     ],
                   ),
@@ -598,8 +647,8 @@ class _TaskListPageState extends State<TaskListPage> {
                       Text(
                         context
                             .tr('pendingCount', {'count': _pendingSyncCount}),
-                        style: const TextStyle(
-                          color: AppColors.warning,
+                        style: TextStyle(
+                          color: context.appColors.warning,
                           fontSize: 10,
                           fontWeight: FontWeight.w700,
                         ),
@@ -609,7 +658,7 @@ class _TaskListPageState extends State<TaskListPage> {
                 ),
               ],
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 9),
             Row(
               children: [
                 Expanded(
@@ -619,11 +668,13 @@ class _TaskListPageState extends State<TaskListPage> {
                         _isUpdatingDutyStatus ? null : _performDutyToggle,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: _isCheckedIn
-                          ? AppColors.danger.withValues(alpha: .14)
-                          : AppColors.success,
+                          ? context.appColors.danger.withValues(alpha: .14)
+                          : context.appColors.success,
                       foregroundColor: _isCheckedIn
-                          ? AppColors.danger
-                          : AppColors.background,
+                          ? context.appColors.danger
+                          : context.appColors.background,
+                      minimumSize: const Size(48, 44),
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
                     ),
                     icon: _isUpdatingDutyStatus
                         ? const SizedBox(
@@ -647,9 +698,11 @@ class _TaskListPageState extends State<TaskListPage> {
                   child: OutlinedButton.icon(
                     onPressed: _isSyncing ? null : _syncNow,
                     style: OutlinedButton.styleFrom(
-                      foregroundColor:
-                          hasPending ? AppColors.warning : AppColors.textMuted,
-                      minimumSize: const Size(48, 52),
+                      foregroundColor: hasPending
+                          ? context.appColors.warning
+                          : context.appColors.textMuted,
+                      minimumSize: const Size(48, 44),
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
                     ),
                     icon: _isSyncing
                         ? const SizedBox(
@@ -703,7 +756,7 @@ class _TaskListPageState extends State<TaskListPage> {
               },
             ),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 8),
           Expanded(
             child: _ModeButton(
               label: context.tr('availablePool'),
@@ -729,10 +782,10 @@ class _TaskListPageState extends State<TaskListPage> {
       ('completed', context.tr('completed')),
     ];
     return SizedBox(
-      height: 56,
+      height: 44,
       child: ListView(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+        padding: const EdgeInsets.fromLTRB(16, 6, 16, 5),
         children: filters.map((f) {
           final active = _filter == f.$1;
           return GestureDetector(
@@ -743,12 +796,15 @@ class _TaskListPageState extends State<TaskListPage> {
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 200),
               margin: const EdgeInsets.only(right: 8),
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 3),
               decoration: BoxDecoration(
-                color: active ? AppColors.primarySoft : Colors.transparent,
+                color:
+                    active ? context.appColors.primarySoft : Colors.transparent,
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(
-                  color: active ? AppColors.primary : AppColors.border,
+                  color: active
+                      ? context.appColors.primary
+                      : context.appColors.border,
                 ),
               ),
               child: Text(
@@ -756,7 +812,9 @@ class _TaskListPageState extends State<TaskListPage> {
                 style: GoogleFonts.inter(
                   fontSize: 12,
                   fontWeight: FontWeight.w500,
-                  color: active ? AppColors.primary : AppColors.textMuted,
+                  color: active
+                      ? context.appColors.primary
+                      : context.appColors.textMuted,
                 ),
               ),
             ),
@@ -772,13 +830,13 @@ class _TaskListPageState extends State<TaskListPage> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(Icons.error_outline_rounded,
-                  color: Colors.red, size: 48),
+              Icon(Icons.error_outline_rounded,
+                  color: context.appColors.danger, size: 48),
               const SizedBox(height: 16),
               Text(msg,
                   textAlign: TextAlign.center,
                   style: GoogleFonts.inter(
-                      color: const Color(0xFF94A3B8), fontSize: 14)),
+                      color: context.appColors.textMuted, fontSize: 14)),
               const SizedBox(height: 20),
               TextButton(
                   onPressed: _loadTasks, child: Text(context.tr('retry'))),
@@ -791,11 +849,12 @@ class _TaskListPageState extends State<TaskListPage> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.task_alt_rounded, size: 64, color: Colors.grey.shade700),
+            Icon(Icons.task_alt_rounded,
+                size: 64, color: context.appColors.textSubtle),
             const SizedBox(height: 16),
             Text(context.tr('noTasks'),
                 style: GoogleFonts.inter(
-                    color: const Color(0xFF64748B), fontSize: 16)),
+                    color: context.appColors.textMuted, fontSize: 16)),
           ],
         ),
       );
@@ -816,8 +875,8 @@ class _OfflineAwareRefresh extends StatelessWidget {
   Widget build(BuildContext context) {
     if (!isOnline) return child;
     return RefreshIndicator(
-      color: AppColors.primary,
-      backgroundColor: AppColors.surface,
+      color: context.appColors.primary,
+      backgroundColor: context.appColors.surface,
       onRefresh: onRefresh,
       child: child,
     );
@@ -830,7 +889,8 @@ class _ConnectionPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = isOnline ? AppColors.success : AppColors.danger;
+    final color =
+        isOnline ? context.appColors.success : context.appColors.danger;
     return AnimatedContainer(
       duration: const Duration(milliseconds: 250),
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
@@ -875,13 +935,17 @@ class _ModeButton extends StatelessWidget {
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(vertical: 10),
+        constraints: const BoxConstraints(minHeight: 42),
+        padding: const EdgeInsets.symmetric(vertical: 7),
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: isActive ? AppColors.primarySoft : AppColors.surface,
+          color: isActive
+              ? context.appColors.primarySoft
+              : context.appColors.surface,
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
-            color: isActive ? AppColors.primary : AppColors.border,
+            color:
+                isActive ? context.appColors.primary : context.appColors.border,
           ),
         ),
         child: Text(
@@ -889,7 +953,9 @@ class _ModeButton extends StatelessWidget {
           style: GoogleFonts.inter(
             fontSize: 13,
             fontWeight: FontWeight.w600,
-            color: isActive ? AppColors.primary : AppColors.textMuted,
+            color: isActive
+                ? context.appColors.primary
+                : context.appColors.textMuted,
           ),
         ),
       ),
