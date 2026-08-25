@@ -5,6 +5,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:local_auth/local_auth.dart';
 import '../bloc/task_bloc.dart';
 import '../widgets/task_card.dart';
 import '../widgets/outsource_dialog.dart';
@@ -27,7 +28,6 @@ class TaskListPage extends StatefulWidget {
 
 class _TaskListPageState extends State<TaskListPage> {
   String _filter = 'all';
-  bool _isAvailableMode = false;
   Timer? _refreshTimer;
   StreamSubscription<bool>? _connectionSubscription;
   StreamSubscription<SyncResult>? _syncResultSubscription;
@@ -67,7 +67,7 @@ class _TaskListPageState extends State<TaskListPage> {
       if (result.syncedCount > 0 && !_isSyncing) {
         context.read<TaskBloc>().add(LoadTasks(
               statusFilter: _filter,
-              isAvailable: _isAvailableMode,
+              isAvailable: false,
               showLoading: false,
             ));
       }
@@ -77,7 +77,7 @@ class _TaskListPageState extends State<TaskListPage> {
       if (mounted) {
         context.read<TaskBloc>().add(LoadTasks(
               statusFilter: _filter,
-              isAvailable: _isAvailableMode,
+              isAvailable: false,
               showLoading: false,
             ));
         _updatePendingSyncCount();
@@ -105,7 +105,7 @@ class _TaskListPageState extends State<TaskListPage> {
   void _loadTasks() {
     context
         .read<TaskBloc>()
-        .add(LoadTasks(statusFilter: _filter, isAvailable: _isAvailableMode));
+        .add(LoadTasks(statusFilter: _filter, isAvailable: false));
   }
 
   Future<void> _refreshTasks() async {
@@ -116,7 +116,7 @@ class _TaskListPageState extends State<TaskListPage> {
 
     bloc.add(LoadTasks(
       statusFilter: _filter,
-      isAvailable: _isAvailableMode,
+      isAvailable: false,
       showLoading: false,
     ));
 
@@ -152,7 +152,7 @@ class _TaskListPageState extends State<TaskListPage> {
       // sync button stuck after the queue operation itself has completed.
       context.read<TaskBloc>().add(LoadTasks(
             statusFilter: _filter,
-            isAvailable: _isAvailableMode,
+            isAvailable: false,
             showLoading: false,
           ));
 
@@ -225,6 +225,17 @@ class _TaskListPageState extends State<TaskListPage> {
     setState(() => _isUpdatingDutyStatus = true);
 
     try {
+      final biometric = LocalAuthentication();
+      final supported = await biometric.canCheckBiometrics ||
+          await biometric.isDeviceSupported();
+      if (!supported ||
+          !await biometric.authenticate(
+            localizedReason: _isCheckedIn
+                ? 'Authenticate to check out'
+                : 'Authenticate to check in',
+            options: const AuthenticationOptions(
+                biometricOnly: true, stickyAuth: true),
+          )) throw StateError('Fingerprint authorization was not completed.');
       final serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
         if (!mounted) return;
@@ -263,22 +274,19 @@ class _TaskListPageState extends State<TaskListPage> {
         );
         return;
       }
+      if (await Geolocator.getLocationAccuracy() ==
+          LocationAccuracyStatus.reduced) {
+        await Geolocator.openAppSettings();
+        throw StateError(
+            'Enable Precise location in app settings, then try again.');
+      }
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
           content: Text('Getting GPS location (internet is not required)...'),
           duration: Duration(seconds: 3)));
 
-      final locationResult = await _getLocationOffline();
-      final position = locationResult.position;
-
-      if (locationResult.usedCachedPosition && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text(
-              'GPS signal was weak. Using a recent location saved by your phone.'),
-          duration: Duration(seconds: 3),
-        ));
-      }
+      final position = await _getPreciseLocation();
 
       final repo = sl<TaskRepository>();
       final isOnlineSync = _isCheckedIn
@@ -316,8 +324,12 @@ class _TaskListPageState extends State<TaskListPage> {
     } catch (e) {
       if (!mounted) return;
       final message = e is TimeoutException
-          ? 'Could not get a GPS signal. Move to an open area and try again. Internet is not required.'
-          : 'Could not access your location. Check location settings and try again.';
+          ? 'Could not get a precise GPS signal. Move outdoors and try again.'
+          : e is StateError
+              ? e.message
+              : e.toString().toLowerCase().contains('no technical record')
+                  ? 'Your Odoo account is not linked to a workshop technician record. Ask an administrator to link your user account before checking in.'
+                  : 'Location failed: ${e.toString().replaceFirst('Exception: ', '')}';
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text(message)));
     } finally {
@@ -327,41 +339,52 @@ class _TaskListPageState extends State<TaskListPage> {
     }
   }
 
-  Future<({Position position, bool usedCachedPosition})>
-      _getLocationOffline() async {
-    final LocationSettings settings = Platform.isAndroid
-        ? AndroidSettings(
-            // Android's native LocationManager talks directly to the GPS
-            // hardware and does not depend on Google Play Services or internet.
-            forceLocationManager: true,
-            accuracy: LocationAccuracy.high,
-            timeLimit: const Duration(seconds: 60),
-          )
-        : const LocationSettings(
-            accuracy: LocationAccuracy.high,
-            timeLimit: Duration(seconds: 60),
-          );
+  Future<Position> _getPreciseLocation() async {
+    final fused = await _bestFreshFix(
+      Platform.isAndroid
+          ? AndroidSettings(
+              accuracy: LocationAccuracy.bestForNavigation,
+              timeLimit: const Duration(seconds: 15),
+            )
+          : const LocationSettings(
+              accuracy: LocationAccuracy.bestForNavigation,
+              timeLimit: Duration(seconds: 15),
+            ),
+    );
+    if (fused != null) return fused;
 
-    try {
-      final position =
-          await Geolocator.getCurrentPosition(locationSettings: settings);
-      return (position: position, usedCachedPosition: false);
-    } on TimeoutException {
-      // A first GPS satellite fix can be slow indoors. Only use the phone's
-      // cached fix when it is recent and reasonably accurate.
-      final cached = await Geolocator.getLastKnownPosition(
-        forceAndroidLocationManager: Platform.isAndroid,
-      );
-      final isRecent = cached != null &&
-          DateTime.now().difference(cached.timestamp).abs() <=
-              const Duration(minutes: 15);
-      final isAccurate = cached != null && cached.accuracy <= 250;
-
-      if (cached != null && isRecent && isAccurate) {
-        return (position: cached, usedCachedPosition: true);
-      }
-      rethrow;
+    if (Platform.isAndroid) {
+      // Offline fallback: direct hardware GPS. No cached position is used.
+      final gps = await _bestFreshFix(AndroidSettings(
+        forceLocationManager: true,
+        accuracy: LocationAccuracy.bestForNavigation,
+        timeLimit: const Duration(seconds: 20),
+      ));
+      if (gps != null) return gps;
     }
+    throw TimeoutException(
+        'A fresh GPS fix with 5 metre accuracy was not available.');
+  }
+
+  Future<Position?> _bestFreshFix(LocationSettings settings) async {
+    Position? best;
+    StreamSubscription<Position>? subscription;
+    Timer? timeout;
+    final result = Completer<Position?>();
+
+    void finish() {
+      if (!result.isCompleted) result.complete(best);
+      timeout?.cancel();
+      subscription?.cancel();
+    }
+
+    subscription = Geolocator.getPositionStream(locationSettings: settings)
+        .listen((position) {
+      if (best == null || position.accuracy < best!.accuracy) best = position;
+      if (position.accuracy <= 5) finish();
+    }, onError: (_) => finish());
+    timeout = Timer(const Duration(seconds: 120), finish);
+    return result.future;
   }
 
   Future<void> _showLocationPrompt({
@@ -476,8 +499,7 @@ class _TaskListPageState extends State<TaskListPage> {
       body: Column(
         children: [
           _buildShiftPanel(),
-          _buildModeToggle(),
-          if (!_isAvailableMode) _buildFilterBar(),
+          _buildFilterBar(),
           Expanded(
             child: BlocConsumer<TaskBloc, TaskState>(
               listener: (context, state) {
@@ -497,11 +519,7 @@ class _TaskListPageState extends State<TaskListPage> {
                 }
                 if (state is TaskLoaded) {
                   // If the mode was switched while loading or state updated from action, sync UI
-                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                    if (mounted && _isAvailableMode != state.isAvailableMode) {
-                      setState(() => _isAvailableMode = state.isAvailableMode);
-                    }
-                  });
+                  WidgetsBinding.instance.addPostFrameCallback((_) {});
                   if (state.tasks.isEmpty) {
                     return _buildRefreshableStatus(_buildEmpty());
                   }
@@ -739,41 +757,6 @@ class _TaskListPageState extends State<TaskListPage> {
     );
   }
 
-  Widget _buildModeToggle() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Row(
-        children: [
-          Expanded(
-            child: _ModeButton(
-              label: context.tr('myTasks'),
-              isActive: !_isAvailableMode,
-              onTap: () {
-                if (_isAvailableMode) {
-                  setState(() => _isAvailableMode = false);
-                  _loadTasks();
-                }
-              },
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: _ModeButton(
-              label: context.tr('availablePool'),
-              isActive: _isAvailableMode,
-              onTap: () {
-                if (!_isAvailableMode) {
-                  setState(() => _isAvailableMode = true);
-                  _loadTasks();
-                }
-              },
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildFilterBar() {
     final filters = [
       ('all', context.tr('all')),
@@ -916,48 +899,6 @@ class _ConnectionPill extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _ModeButton extends StatelessWidget {
-  final String label;
-  final bool isActive;
-  final VoidCallback onTap;
-
-  const _ModeButton(
-      {required this.label, required this.isActive, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        constraints: const BoxConstraints(minHeight: 42),
-        padding: const EdgeInsets.symmetric(vertical: 7),
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: isActive
-              ? context.appColors.primarySoft
-              : context.appColors.surface,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color:
-                isActive ? context.appColors.primary : context.appColors.border,
-          ),
-        ),
-        child: Text(
-          label,
-          style: GoogleFonts.inter(
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-            color: isActive
-                ? context.appColors.primary
-                : context.appColors.textMuted,
-          ),
-        ),
       ),
     );
   }
